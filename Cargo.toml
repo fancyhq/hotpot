@@ -1,27 +1,19 @@
-[workspace]
-members = ["crates/*"]
-resolver = "2"
-
-[workspace.package]
+[package]
+name = "hotpot"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
 authors = []
 repository = "https://github.com/fancyhq/hotpot"
 
-[workspace.dependencies]
-# 在此集中声明可被各成员通过 `xxx.workspace = true` 复用的依赖
-# 例如：
-# anyhow = "1"
-# tokio = { version = "1", features = ["full"] }
-# serde = { version = "1", features = ["derive"] }
-
-[package]
-name = "hotpot"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-authors.workspace = true
-repository.workspace = true
-
 [dependencies]
+anyhow = "1.0.102"
+indoc = "2.0.7"
+nanoid = "0.5.0"
+serde = { version = "1.0.228", features = ["derive"] }
+toml = "1.1.2"
+toml_edit = { version = "0.25.11", features = ["serde"] }
+chrono = { version = "0.4", default-features = false, features = [
+    "clock",
+    "serde",
+] }

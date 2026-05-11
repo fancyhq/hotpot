@@ -21,3 +21,11 @@ title = "我的新任务"
 commit = "deadbeef"
 status = "In Progress"
 active = true
+
+[[tasks]]
+time = "2026-05-11"
+task_id = "2YGVAcnx9f"
+title = "我的新任务"
+commit = "deadbeef"
+status = "In Progress"
+active = true

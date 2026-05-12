@@ -99,10 +99,10 @@ Record candidates only when the fix is reusable, validated, and can become a fut
 
 ### OpenCode Plugin Tools
 
-Review-memory plugin files exist in both the active project config and template hooks:
+Review-memory plugin files are now installed from platform templates:
 
-- `.opencode/plugins/review-memory.ts`
-- `hooks/opencode/plugins/review-memory.ts`
+- `assets/platforms/opencode/plugins/review-memory.ts`
+- installed target: `.opencode/plugins/review-memory.ts`
 
 The plugin exposes three tools:
 
@@ -120,10 +120,10 @@ Important limitation: the plugin does not automatically inject or read prompt co
 
 ### OpenCode Finish Command
 
-The first version of `/finish-work` has been added in both active config and template hooks:
+The first version of `/hotpot:finish-work` is installed from platform templates:
 
-- `.opencode/commands/finish-work.md`
-- `hooks/opencode/commands/finish-work.md`
+- `assets/platforms/opencode/commands/hotpot/finish-work.md`
+- installed target: `.opencode/commands/hotpot/finish-work.md`
 
 Current command behavior:
 
@@ -173,10 +173,10 @@ Earlier `cargo check` passed with dead-code warnings. `cargo fmt --check` previo
 - `prompts/get-issue.md`: official long-term issue JSON prompt.
 - `prompts/record-issue-candidate.md`: temporary candidate recording prompt.
 - `prompts/summarize-issue-candidates.md`: finish-stage promotion prompt.
-- `.opencode/plugins/review-memory.ts`: active OpenCode tools.
-- `hooks/opencode/plugins/review-memory.ts`: template OpenCode tools.
-- `.opencode/commands/finish-work.md`: active finish command.
-- `hooks/opencode/commands/finish-work.md`: template finish command.
+- `assets/platforms/opencode/plugins/review-memory.ts`: OpenCode review-memory plugin template.
+- `.opencode/plugins/review-memory.ts`: installed OpenCode tools.
+- `assets/platforms/opencode/commands/hotpot/finish-work.md`: OpenCode finish command template.
+- `.opencode/commands/hotpot/finish-work.md`: installed finish command.
 
 ## Design Decisions
 

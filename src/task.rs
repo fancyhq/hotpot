@@ -1,11 +1,14 @@
 use std::{fs, io::Write, path::PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Error, Ok, Result};
 use chrono::NaiveDate;
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
 
-use crate::paths::overview_file_path;
+use crate::{
+    paths::{self, overview_file_path},
+    utils,
+};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TaskStatus {
@@ -15,6 +18,16 @@ pub enum TaskStatus {
     InProgress,
     #[serde(rename = "Cancelled")]
     Cancelled,
+}
+
+impl TaskStatus {
+    pub fn as_str(&self) -> &str {
+        match self {
+            TaskStatus::Done => "Done",
+            TaskStatus::InProgress => "In Progress",
+            TaskStatus::Cancelled => "Cancelled",
+        }
+    }
 }
 
 #[derive(Deserialize, Debug, Serialize)]
@@ -73,10 +86,55 @@ pub fn get_task_list(root_dir: &str, username: &str) -> Result<Vec<TaskInfo>> {
         .collect()
 }
 
-/// 判断是否有多个active的任务，程序中只能有一个任务是active为true，多个应该进行处理
-pub fn has_multi_active_task(root_dir: &str, username: &str) -> Result<bool> {
+/// 获取当前 overview.jsonl 中，active 状态为true的任务总数，当创建新任务，需判断小于1
+pub fn get_active_task_count(root_dir: &str, username: &str) -> Result<usize> {
     let task_list = get_task_list(root_dir, username)?;
-    Ok(task_list.iter().filter(|info| info.active).count() > 1)
+    Ok(task_list.iter().filter(|info| info.active).count())
+}
+
+/// 停止所有 active 的任务，通常在创建新任务时，有其他遗留时使用
+pub fn stop_all_active_tasks(root_dir: &str, username: &str) -> Result<()> {
+    let path = ensure_overview_exists(root_dir, username)?;
+    let mut task_list = get_task_list(root_dir, username)?;
+
+    for task in &mut task_list {
+        task.active = false;
+    }
+
+    let mut content = String::new();
+    for task in task_list {
+        let line = serde_json::to_string(&task)
+            .with_context(|| format!("序列化任务信息失败，任务ID：{}", task.task_id))?;
+        content.push_str(&line);
+        content.push('\n');
+    }
+
+    fs::write(&path, content)
+        .with_context(|| format!("写入任务文件失败，路径：{}", path.display()))?;
+
+    let active_task_count = get_active_task_count(root_dir, username)?;
+    if active_task_count > 0 {
+        return Err(anyhow::anyhow!("Stop failed."));
+    }
+    Ok(())
+}
+
+/// 根据提供的 TaskInfo 内容生成文件名
+pub fn get_task_filename(task: &TaskInfo) -> String {
+    format!("{}-{}", task.time, task.title)
+}
+
+/// 通过此函数获取第一个被标记为 active 的任务
+pub fn get_active_task_filepath(root_dir: &str, username: &str) -> Result<PathBuf> {
+    let task_list = get_task_list(root_dir, username)?;
+    for task in task_list {
+        if task.active {
+            let task_filename = get_task_filename(&task);
+            let task_dir = paths::task_dir_path(root_dir, username);
+            return Ok(task_dir.join(format!("{task_filename}.md")));
+        }
+    }
+    Err(anyhow::anyhow!("Not found active task"))
 }
 
 /// 创建一个新的任务，新的任务将追加到 overview.jsonl 文件中，并给定初始Status为InProgress，给定active为true

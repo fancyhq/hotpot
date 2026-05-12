@@ -10,6 +10,10 @@ pub fn workspace_dir(root_dir: &str, username: &str) -> PathBuf {
     hotpot_dir(root_dir).join("workspaces").join(username)
 }
 
+pub fn task_dir_path(root_dir: &str, username: &str) -> PathBuf {
+    workspace_dir(root_dir, username).join("tasks")
+}
+
 /// 存放任务的总览文件路径
 pub fn overview_file_path(root_dir: &str, username: &str) -> PathBuf {
     workspace_dir(root_dir, username).join("overview.jsonl")

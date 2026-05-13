@@ -5,10 +5,7 @@ use chrono::NaiveDate;
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    paths::{self, overview_file_path},
-    utils,
-};
+use crate::paths::{self, overview_file_path};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TaskStatus {
@@ -172,15 +169,15 @@ pub fn create_task(
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{get_root_dir, get_username};
+    use crate::context::resolve_root_dir;
 
     use super::*;
 
     #[test]
     fn test_get_task_list() {
-        let root_dir = get_root_dir().unwrap();
-        let username = get_username().unwrap();
-        let task_list = get_task_list(&root_dir, &username).unwrap();
+        let root_dir = resolve_root_dir(None).unwrap();
+        let username = "test";
+        let task_list = get_task_list(&root_dir, username).unwrap();
         for info in &task_list {
             let result = info.status == TaskStatus::InProgress;
             println!("任务状态：{result}");
@@ -190,10 +187,10 @@ mod tests {
 
     #[test]
     fn test_create_task() {
-        let root_dir = get_root_dir().unwrap();
-        let username = get_username().unwrap();
-        create_task(&root_dir, &username, "我的新任务", Some("deadbeef")).unwrap();
-        let list = get_task_list(&root_dir, &username).unwrap();
+        let root_dir = resolve_root_dir(None).unwrap();
+        let username = "test";
+        create_task(&root_dir, username, "我的新任务", Some("deadbeef")).unwrap();
+        let list = get_task_list(&root_dir, username).unwrap();
         println!("现在有 {} 条任务", list.len());
         println!("最后一条：{:#?}", list.last().unwrap());
     }

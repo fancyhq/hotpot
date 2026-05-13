@@ -398,13 +398,13 @@ pub fn render_relevant_issues_to_markdown(
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::get_root_dir;
+    use crate::context::resolve_root_dir;
 
     use super::*;
 
     #[test]
     fn test_render_issues_to_markdown() {
-        let root_dir = get_root_dir().unwrap();
+        let root_dir = resolve_root_dir(None).unwrap();
         let markdown = render_issues_to_markdown(&root_dir).unwrap();
         let markdown_path = format!("{}/issues.md", root_dir);
         fs::write(markdown_path, markdown).unwrap();
@@ -412,7 +412,7 @@ mod tests {
 
     #[test]
     fn test_filter_relevant_issues() {
-        let root_dir = get_root_dir().unwrap();
+        let root_dir = resolve_root_dir(None).unwrap();
         let issues = get_issues_list(&root_dir).unwrap();
         let context = ChangeContext {
             changed_files: vec![String::from("src/issues.rs")],
@@ -436,7 +436,7 @@ mod tests {
 
     #[test]
     fn test_issue_candidates_jsonl() {
-        let root_dir = get_root_dir().unwrap();
+        let root_dir = resolve_root_dir(None).unwrap();
         let username = "test_issue_candidates_jsonl";
         let candidate = IssueCandidate {
             created_at: String::from("2026-05-11T10:30:00Z"),

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Args, Subcommand};
 
-use crate::{issues, utils};
+use crate::{context, issues};
 
 #[derive(Subcommand, Debug)]
 pub enum IssuesCommand {
@@ -22,13 +22,13 @@ pub struct RelevantArgs {
 }
 
 pub fn list_issues() -> Result<()> {
-    let root_dir = utils::get_root_dir()?;
+    let root_dir = context::resolve_root_dir(None)?;
     print!("{}", issues::render_issues_to_markdown(&root_dir)?);
     Ok(())
 }
 
 pub fn relevant_issues(args: RelevantArgs) -> Result<()> {
-    let root_dir = utils::get_root_dir()?;
+    let root_dir = context::resolve_root_dir(None)?;
     let context = issues::ChangeContext {
         changed_files: args.changed_files,
         keywords: args.keywords,

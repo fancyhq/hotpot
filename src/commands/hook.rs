@@ -1,12 +1,12 @@
 //! Hotpot hook command implementations.
 
-use std::{env, fs, io::Read, path::PathBuf};
+use std::{io::Read, path::PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context as _, Result};
 use clap::{Args, Subcommand, ValueEnum};
 use serde_json::{Value, json};
 
-use crate::paths;
+use crate::context::Context;
 
 /// Hook commands supported by `hotpot hook`.
 #[derive(Subcommand, Debug)]
@@ -66,34 +66,13 @@ pub enum BootstrapFormat {
     Json,
 }
 
-/// Resolved Hotpot hook context.
-#[derive(Debug, serde::Serialize)]
-struct HookContext {
-    /// Absolute project root.
-    #[serde(rename = "ROOT_DIR")]
-    root_dir: String,
-
-    /// Session username used by Hotpot workspace files.
-    #[serde(rename = "HOTPOT_USERNAME")]
-    username: String,
-
-    /// JSONL file that stores temporary issue candidates.
-    #[serde(rename = "HOTPOT_ISSUE_CANDIDATES_FILE")]
-    issue_candidates_file: String,
-
-    /// Prompt path used when recording a candidate.
-    #[serde(rename = "HOTPOT_RECORD_ISSUE_CANDIDATE_PROMPT")]
-    record_issue_candidate_prompt: String,
-
-    /// Prompt path used when summarizing candidates.
-    #[serde(rename = "HOTPOT_SUMMARIZE_ISSUE_CANDIDATES_PROMPT")]
-    summarize_issue_candidates_prompt: String,
-}
-
 /// Executes the hook bootstrap command.
+///
+/// 走 env-first 链解析根目录，并显式创建 issue 候选 JSONL，让 OpenCode /
+/// Pi 等平台插件在首次注入 env 时拿到已经存在的文件。
 pub fn bootstrap(args: BootstrapArgs) -> Result<()> {
-    let root_dir = resolve_root_dir(args.root_dir)?;
-    let context = build_context(&root_dir)?;
+    let context = Context::resolve(args.root_dir)?;
+    context.ensure_issue_candidates_file()?;
 
     match args.format {
         BootstrapFormat::Shell => print_shell_exports(&context),
@@ -104,9 +83,12 @@ pub fn bootstrap(args: BootstrapArgs) -> Result<()> {
 }
 
 /// Executes a Claude Code hook event command.
+///
+/// 走 `Context::from_payload` 入口，hook 输出反映平台传入的 cwd，不被
+/// ambient `ROOT_DIR` 污染。
 pub fn claude(command: ClaudeHookCommand) -> Result<()> {
     let payload = read_hook_payload()?;
-    let context = context_from_payload(&payload)?;
+    let context = Context::from_payload(&payload)?;
     let event_name = hook_event_name(
         &payload,
         match command {
@@ -134,9 +116,11 @@ pub fn claude(command: ClaudeHookCommand) -> Result<()> {
 }
 
 /// Executes a Codex hook event command.
+///
+/// 同 `claude`，走 payload-first 入口。
 pub fn codex(command: CodexHookCommand) -> Result<()> {
     let payload = read_hook_payload()?;
-    let context = context_from_payload(&payload)?;
+    let context = Context::from_payload(&payload)?;
 
     match command {
         CodexHookCommand::PreToolUse => {
@@ -159,13 +143,6 @@ pub fn codex(command: CodexHookCommand) -> Result<()> {
     }
 }
 
-/// Resolves the effective project root for hook bootstrap.
-fn resolve_root_dir(root_dir: Option<PathBuf>) -> Result<PathBuf> {
-    let path =
-        root_dir.unwrap_or(env::current_dir().context("failed to resolve current directory")?);
-    Ok(path.canonicalize().unwrap_or(path))
-}
-
 /// Reads a platform hook payload from stdin.
 fn read_hook_payload() -> Result<Value> {
     let mut raw = String::new();
@@ -180,17 +157,6 @@ fn read_hook_payload() -> Result<Value> {
     serde_json::from_str(raw.trim()).context("failed to parse hook payload JSON")
 }
 
-/// Builds a Hotpot context from a platform hook payload.
-fn context_from_payload(payload: &Value) -> Result<HookContext> {
-    let root_dir = payload
-        .get("cwd")
-        .and_then(Value::as_str)
-        .map(PathBuf::from);
-    let root_dir = resolve_root_dir(root_dir)?;
-
-    build_context(&root_dir)
-}
-
 /// Returns the hook event name from a payload, falling back to a stable event name.
 fn hook_event_name(payload: &Value, fallback: &str) -> String {
     payload
@@ -201,94 +167,8 @@ fn hook_event_name(payload: &Value, fallback: &str) -> String {
         .to_string()
 }
 
-/// Builds the runtime context from the resolved project root.
-fn build_context(root_dir: &PathBuf) -> Result<HookContext> {
-    let root_dir = root_dir.display().to_string();
-    let username = resolve_username(&root_dir)?;
-    let issue_candidates_file = paths::issue_candidates_file_path(&root_dir, &username)
-        .display()
-        .to_string();
-    let record_issue_candidate_prompt = prompt_path(&root_dir, "record-issue-candidate.md")
-        .display()
-        .to_string();
-    let summarize_issue_candidates_prompt = prompt_path(&root_dir, "summarize-issue-candidates.md")
-        .display()
-        .to_string();
-    ensure_issue_candidates_file(&issue_candidates_file)?;
-
-    Ok(HookContext {
-        root_dir,
-        username,
-        issue_candidates_file,
-        record_issue_candidate_prompt,
-        summarize_issue_candidates_prompt,
-    })
-}
-
-/// Returns the project prompt path for a named Hotpot prompt.
-fn prompt_path(root_dir: &str, name: &str) -> PathBuf {
-    PathBuf::from(root_dir).join("prompts").join(name)
-}
-
-/// Resolves the Hotpot username from env or git configuration.
-fn resolve_username(root_dir: &str) -> Result<String> {
-    if let Some(username) = normalize_username(env::var("HOTPOT_USERNAME").ok()) {
-        return Ok(username);
-    }
-
-    if let Some(username) = git_username(root_dir, &["config", "--local", "user.name"])? {
-        return Ok(username);
-    }
-
-    if let Some(username) = git_username(root_dir, &["config", "--global", "user.name"])? {
-        return Ok(username);
-    }
-
-    Ok("default".to_string())
-}
-
-/// Normalizes a string value to `Some` only when it is non-empty.
-fn normalize_username(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
-        let trimmed = value.trim();
-        (!trimmed.is_empty()).then(|| trimmed.to_string())
-    })
-}
-
-/// Runs a git command and returns trimmed stdout when successful.
-fn git_username(root_dir: &str, args: &[&str]) -> Result<Option<String>> {
-    let output = std::process::Command::new("git")
-        .args(args)
-        .current_dir(root_dir)
-        .output();
-
-    match output {
-        Ok(output) if output.status.success() => {
-            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            Ok(normalize_username(Some(stdout)))
-        }
-        Ok(_) | Err(_) => Ok(None),
-    }
-}
-
-/// Ensures the issue candidates JSONL file exists.
-fn ensure_issue_candidates_file(file_path: &str) -> Result<()> {
-    let file_path = PathBuf::from(file_path);
-    if let Some(parent) = file_path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create {}", parent.display()))?;
-    }
-
-    if !file_path.exists() {
-        fs::File::create(&file_path)
-            .with_context(|| format!("failed to create {}", file_path.display()))?;
-    }
-
-    Ok(())
-}
-
 /// Prints shell exports that can bootstrap a hook runtime.
-fn print_shell_exports(context: &HookContext) {
+fn print_shell_exports(context: &Context) {
     println!("export ROOT_DIR='{}'", shell_quote(&context.root_dir));
     println!(
         "export HOTPOT_USERNAME='{}'",
@@ -309,7 +189,7 @@ fn print_shell_exports(context: &HookContext) {
 }
 
 /// Prints the hook context as JSON.
-fn print_json(context: &HookContext) -> Result<()> {
+fn print_json(context: &Context) -> Result<()> {
     println!("{}", serde_json::to_string(context)?);
     Ok(())
 }
@@ -321,7 +201,7 @@ fn print_value(value: &Value) -> Result<()> {
 }
 
 /// Builds the shared shell context message for platform hooks.
-fn shell_context_message(context: &HookContext, intro: &str) -> String {
+fn shell_context_message(context: &Context, intro: &str) -> String {
     let mut lines = vec![
         intro.to_string(),
         "Use these values for Hotpot-related Bash commands:".to_string(),
@@ -331,7 +211,7 @@ fn shell_context_message(context: &HookContext, intro: &str) -> String {
 }
 
 /// Builds the Codex pre-tool context message including an export hint.
-fn codex_shell_context_message(context: &HookContext) -> String {
+fn codex_shell_context_message(context: &Context) -> String {
     let mut lines = vec![
         "Hotpot shell context was resolved from the Codex hook payload cwd.".to_string(),
         "Use these values for Hotpot-related Bash commands:".to_string(),
@@ -345,7 +225,7 @@ fn codex_shell_context_message(context: &HookContext) -> String {
 }
 
 /// Builds the review-memory bootstrap message for subagent/session hooks.
-fn review_memory_message(context: &HookContext) -> String {
+fn review_memory_message(context: &Context) -> String {
     [
         "Hotpot review-memory context is ready.".to_string(),
         format!("- ROOT_DIR: {}", context.root_dir),
@@ -360,7 +240,7 @@ fn review_memory_message(context: &HookContext) -> String {
 }
 
 /// Returns all Hotpot context values formatted for human-readable hook output.
-fn context_lines(context: &HookContext) -> Vec<String> {
+fn context_lines(context: &Context) -> Vec<String> {
     vec![
         format!("- ROOT_DIR: {}", context.root_dir),
         format!("- HOTPOT_USERNAME: {}", context.username),
@@ -380,7 +260,7 @@ fn context_lines(context: &HookContext) -> Vec<String> {
 }
 
 /// Returns shell assignment snippets for all Hotpot context values.
-fn shell_export_assignments(context: &HookContext) -> String {
+fn shell_export_assignments(context: &Context) -> String {
     [
         ("ROOT_DIR", &context.root_dir),
         ("HOTPOT_USERNAME", &context.username),

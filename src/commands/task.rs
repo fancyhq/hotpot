@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 
-use crate::{task, utils};
+use crate::{context, task};
 
 #[derive(Subcommand, Debug)]
 pub enum TaskCommand {
@@ -42,8 +42,8 @@ pub struct CreateArgs {
 }
 
 pub fn list_tasks() -> Result<()> {
-    let root_dir = utils::get_root_dir()?;
-    let username = utils::get_username()?;
+    let root_dir = context::resolve_root_dir(None)?;
+    let username = context::resolve_username(&root_dir)?;
     let tasks = task::get_task_list(&root_dir, &username)?;
     if tasks.is_empty() {
         println!("No tasks found.");
@@ -62,8 +62,8 @@ pub fn list_tasks() -> Result<()> {
 }
 
 pub fn create_task(args: CreateArgs) -> Result<()> {
-    let root_dir = utils::get_root_dir()?;
-    let username = utils::get_username()?;
+    let root_dir = context::resolve_root_dir(None)?;
+    let username = context::resolve_username(&root_dir)?;
     let has_positional_args = args.title_arg.is_some() || args.commit_arg.is_some();
     let has_named_args = args.title.is_some() || args.commit.is_some();
 
@@ -88,8 +88,8 @@ pub fn create_task(args: CreateArgs) -> Result<()> {
 }
 
 pub fn active_task(args: ActiveArgs) -> Result<()> {
-    let root_dir = utils::get_root_dir()?;
-    let username = utils::get_username()?;
+    let root_dir = context::resolve_root_dir(None)?;
+    let username = context::resolve_username(&root_dir)?;
 
     if args.count {
         let count = task::get_active_task_count(&root_dir, &username)?;
@@ -103,8 +103,8 @@ pub fn active_task(args: ActiveArgs) -> Result<()> {
 }
 
 pub fn stop_task(args: StopArgs) -> Result<()> {
-    let root_dir = utils::get_root_dir()?;
-    let username = utils::get_username()?;
+    let root_dir = context::resolve_root_dir(None)?;
+    let username = context::resolve_username(&root_dir)?;
 
     if args.all {
         task::stop_all_active_tasks(&root_dir, &username)?;

@@ -13,7 +13,7 @@ use nanoid::nanoid;
 use serde::Serialize;
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
-use crate::paths;
+use crate::{context, paths};
 
 const FRAME_TEMPLATE: &str = r#"<!DOCTYPE html>
 <html>
@@ -191,7 +191,7 @@ pub fn serve(options: ServeOptions) -> Result<()> {
 
 pub fn stop(options: StopOptions) -> Result<()> {
     if options.all {
-        let root_dir = std::env::var("ROOT_DIR").unwrap_or_else(|_| ".".to_string());
+        let root_dir = context::resolve_root_dir(None)?;
         let brainstorm_dir = paths::hotpot_dir(&root_dir).join("brainstorm");
         if !brainstorm_dir.exists() {
             return Ok(());

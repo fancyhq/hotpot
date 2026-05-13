@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Args, Subcommand};
 
-use crate::{server, utils};
+use crate::{context, server};
 
 #[derive(Subcommand, Debug)]
 pub enum ServerCommand {
@@ -58,7 +58,7 @@ pub struct StopArgs {
 pub fn start_server(args: StartArgs) -> Result<()> {
     let project_dir = match args.project_dir {
         Some(path) => path,
-        None => PathBuf::from(utils::get_root_dir()?),
+        None => PathBuf::from(context::resolve_root_dir(None)?),
     };
     let url_host = args.url_host.unwrap_or_else(|| {
         if args.host == "127.0.0.1" {

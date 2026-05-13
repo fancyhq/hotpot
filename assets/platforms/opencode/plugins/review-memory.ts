@@ -8,7 +8,7 @@
 
 import { execFile } from "child_process";
 import { mkdir, readFile, writeFile } from "fs/promises";
-import { dirname, join } from "path";
+import { dirname } from "path";
 import { promisify } from "util";
 import { Plugin, tool } from "@opencode-ai/plugin";
 
@@ -25,58 +25,25 @@ type IssueCandidate = {
   promote_hint: string;
 };
 
-function normalizeUsername(value: string | undefined): string | undefined {
-  const normalized = value?.trim();
-  return normalized ? normalized : undefined;
-}
+type HotpotContext = {
+  ROOT_DIR: string;
+  HOTPOT_USERNAME: string;
+  HOTPOT_ISSUE_CANDIDATES_FILE: string;
+  HOTPOT_RECORD_ISSUE_CANDIDATE_PROMPT: string;
+  HOTPOT_SUMMARIZE_ISSUE_CANDIDATES_PROMPT: string;
+};
 
-async function runGit(
-  args: string[],
-  cwd: string,
-): Promise<string | undefined> {
-  try {
-    const { stdout } = await execFileAsync("git", args, { cwd });
-    return normalizeUsername(stdout);
-  } catch {
-    return undefined;
-  }
-}
+async function bootstrapHotpot(rootDir: string): Promise<HotpotContext> {
+  const { stdout } = await execFileAsync("hotpot", [
+    "hook",
+    "bootstrap",
+    "--format",
+    "json",
+    "--root-dir",
+    rootDir,
+  ]);
 
-async function isGitWorkTree(cwd: string): Promise<boolean> {
-  return (await runGit(["rev-parse", "--is-inside-work-tree"], cwd)) === "true";
-}
-
-async function getGitUsername(cwd: string): Promise<string | undefined> {
-  if (await isGitWorkTree(cwd)) {
-    const localUsername = await runGit(["config", "--local", "user.name"], cwd);
-    if (localUsername) {
-      return localUsername;
-    }
-  }
-
-  return runGit(["config", "--global", "user.name"], cwd);
-}
-
-async function resolveSessionUsername(cwd: string): Promise<string> {
-  const environmentUsername = normalizeUsername(process.env.HOTPOT_USERNAME);
-  if (environmentUsername) {
-    return environmentUsername;
-  }
-
-  const gitUsername = await getGitUsername(cwd);
-  if (gitUsername) {
-    return gitUsername;
-  }
-
-  return "default";
-}
-
-function issueCandidatesFilePath(rootDir: string, username: string): string {
-  return join(rootDir, ".hotpot", "workspaces", username, "issue-candidates.jsonl");
-}
-
-function promptPath(rootDir: string, name: string): string {
-  return join(rootDir, "prompts", name);
+  return JSON.parse(stdout) as HotpotContext;
 }
 
 async function ensureJsonlFile(filePath: string): Promise<void> {
@@ -109,48 +76,22 @@ async function readJsonLines<T>(filePath: string): Promise<T[]> {
 }
 
 export const reviewMemory: Plugin = async (ctx) => {
-  let sessionUsername: string | undefined;
-  let pendingSessionUsername: Promise<string> | undefined;
+  let context: HotpotContext | undefined;
 
-  const ensureSessionUsername = async (): Promise<string> => {
-    if (sessionUsername) {
-      return sessionUsername;
-    }
-
-    if (!pendingSessionUsername) {
-      pendingSessionUsername = resolveSessionUsername(ctx.directory).then(
-        (username) => {
-          sessionUsername = username;
-          return username;
-        },
-      );
-    }
-
-    return pendingSessionUsername;
+  const ensureContext = async (): Promise<HotpotContext> => {
+    context ??= await bootstrapHotpot(ctx.directory);
+    return context;
   };
 
   const ensureCandidatesFile = async (): Promise<string> => {
-    const username = await ensureSessionUsername();
-    const filePath = issueCandidatesFilePath(ctx.directory, username);
+    const filePath = (await ensureContext()).HOTPOT_ISSUE_CANDIDATES_FILE;
     await ensureJsonlFile(filePath);
     return filePath;
   };
 
   return {
     "shell.env": async (_input, output) => {
-      const username = await ensureSessionUsername();
-      output.env.HOTPOT_ISSUE_CANDIDATES_FILE = issueCandidatesFilePath(
-        ctx.directory,
-        username,
-      );
-      output.env.HOTPOT_RECORD_ISSUE_CANDIDATE_PROMPT = promptPath(
-        ctx.directory,
-        "record-issue-candidate.md",
-      );
-      output.env.HOTPOT_SUMMARIZE_ISSUE_CANDIDATES_PROMPT = promptPath(
-        ctx.directory,
-        "summarize-issue-candidates.md",
-      );
+      Object.assign(output.env, await ensureContext());
     },
     event: async ({ event }) => {
       if (event.type === "session.created") {

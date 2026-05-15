@@ -13,6 +13,14 @@ You are creating a new Hotpot task. This command is manually triggered and must 
 
 Turn the user's initial idea into a clear executable task file for a future execution agent. Do not create a separate plan file. The task file itself is the handoff document and must include both the task definition and the implementation plan: context, requirements, constraints, approved design, file map, step-by-step execution tasks, validation, and sub-agent execution instructions.
 
+## Output Language
+
+Apply the project language preference to every natural-language output produced by this command — brainstorming questions, design summaries, the entire body of the task `.md` you write, and the final per-command report. Structural anchors and machine-readable tokens (CLI flags, JSON keys, `ACTIVE_CONFLICT:`, markdown section headings like `## Task` / `## Plan` / `### Mode`, the `tdd: true|false` literal, kebab-case filename slugs) MUST stay in English. The full rule lives in:
+
+@.hotpot/prompts/output-language.md
+
+Codex / Pi (no `@path` expansion): the thin shell's substitution table maps this to `$ROOT_DIR/.hotpot/prompts/output-language.md`. `Read` that path before proceeding.
+
 ## Command Usage
 
 - The user-facing invocation pattern is supplied by the platform thin shell (e.g. `/hotpot:new`, `/hotpot-new`, or the Codex skill).
@@ -28,7 +36,7 @@ Turn the user's initial idea into a clear executable task file for a future exec
 3. Convert the approved design into an implementation plan.
 4. Create the Hotpot task record with a title, passing `--switch` / `--inactive` / no-flag based on step 1.
 5. Resolve the task file path (`hotpot task active --path` for the default/switch cases; derive from `TaskInfo` JSON for `--inactive` cases).
-6. Write the finalized task handoff content into the resolved task file.
+6. **Create** the task file at the resolved path and write the finalized handoff content. The `.md` file does **not** exist after `hotpot task create` — only the new row in `overview.jsonl` exists. Use your platform's create-file tool (Claude `Write`, OpenCode `write`, Codex `apply_patch` with `*** Add File`, Pi `write`). **Do NOT `Read`, `Edit`, `ls`, or otherwise probe the path before writing.** A "File not found" from `Read` here is not actionable signal — it just means you haven't created the file yet. See "Writing The Task File" below for the full rule.
 7. Report the created task title, task file path, implementation task count, and whether the new task is the current active.
 
 ## Active Task Handling
@@ -239,25 +247,43 @@ Use the app's own dev server separately when inspecting a real frontend. The com
 
 ## Task Creation
 
-After the user approves the final task design, derive a concise title. Then run `hotpot task create` with the **flag chosen in "Active Task Handling" step 4**:
+After the user approves the final task design, derive a concise **kebab-case** title suitable for direct use as part of a filename. The title MUST satisfy:
+
+- All lowercase ASCII letters, digits, and `-` only.
+- Words separated by a single `-`; no spaces, no underscores, no punctuation, no leading/trailing `-`.
+- 3-8 words is typical (e.g. `add-login-retry`, `fix-overview-jsonl-parse`, `refactor-task-storage-locking`).
+- If the user's idea is in Chinese or another non-ASCII language, translate the gist into a short English kebab-case slug — do NOT romanize or pinyin. When the slug is non-obvious, confirm with the user before calling `task create`.
+
+Examples:
+
+- Good: `add-login-retry`, `improve-overview-jsonl-locking`
+- Bad: `add login retry` (contains spaces), `Add-Login-Retry` (contains uppercase), `添加登录重试` (non-ASCII), `add_login_retry` (contains underscores)
+
+Then run `hotpot task create` with the **flag chosen in "Active Task Handling" step 4**, passing the kebab-case title verbatim:
 
 - **No live active was found** (or only stale actives existed):
 
   ```bash
-  hotpot task create --title "<task title>"
+  hotpot task create --title "<kebab-case-title>"
   ```
 
 - **User chose "Switch active to the new task"**:
 
   ```bash
-  hotpot task create --title "<task title>" --switch
+  hotpot task create --title "<kebab-case-title>" --switch
   ```
 
 - **User chose "Record without switching"**:
 
   ```bash
-  hotpot task create --title "<task title>" --inactive
+  hotpot task create --title "<kebab-case-title>" --inactive
   ```
+
+Concrete example:
+
+```bash
+hotpot task create --title "add-login-retry"
+```
 
 If testing in this repository, replace `hotpot` with `cargo run --`.
 
@@ -270,11 +296,11 @@ This command only creates task metadata in `overview.jsonl`; it does not write t
 Every Hotpot task file lives at `<workspace>/tasks/<YYYY-MM-DD>-<title>.md`. Both segments come directly from the JSON returned by `hotpot task create`:
 
 - `<YYYY-MM-DD>` is the `"time"` field, for example `"time":"2026-05-15"`.
-- `<title>` is the `"title"` field **used verbatim**. Do NOT slugify it, lowercase it, replace spaces with dashes, or strip punctuation — the filename is `<time>-<title>.md` literally (the CLI builds it with `format!("{time}-{title}.md")`).
+- `<title>` is the `"title"` field. Because you produced a kebab-case title in **Task Creation** above, the filename segment is already shell-safe. As a defensive safety net, the CLI also collapses any residual whitespace runs (single spaces, tabs, leading/trailing spaces) in `title` into a single `-` when building the filename — but you should never rely on that fallback. Always produce a clean kebab-case title up front.
 
-Example: `{"time":"2026-05-15","title":"add login retry"}` → `2026-05-15-add login retry.md`.
+Example: `{"time":"2026-05-15","title":"add-login-retry"}` → `2026-05-15-add-login-retry.md`.
 
-Capture both fields from the `task create` output before resolving the path. Prefer the JSON-derived form over slugifying the title yourself, especially when `--inactive` is used (see below).
+Capture both fields from the `task create` output before resolving the path.
 
 ### Resolve The Task File Path
 
@@ -295,6 +321,21 @@ Choose ONE of these two paths depending on the flag passed to `task create`:
 - **`--inactive`** — the new task is `active=false`, so `hotpot task active --path` still resolves to the **existing** live active task's path, NOT the new one. Construct the new task's path yourself from the captured JSON using the convention above (`<workspace>/tasks/<time>-<title>.md`), and tell the user that `/hotpot:execute` will keep targeting the previous active until they `hotpot task resume --task-id <NEW_ID>` later.
 
 Use the resolved path as the task file to write. Do not guess the task file path.
+
+### Writing The Task File
+
+After resolving the path, **create** the file with your platform's create-file tool and write the full handoff content in one shot:
+
+- Claude Code: `Write` tool. Do NOT `Read` the path first — the file does not yet exist, and a `Read` failure is not actionable signal here.
+- OpenCode: `write` tool.
+- Codex: `apply_patch` with an `*** Add File: <resolved-path>` header (not `*** Update File`).
+- Pi: `write` tool.
+
+Common pitfalls to avoid:
+
+- **Do not `Read` the resolved path before writing.** `hotpot task create` only appends a row to `overview.jsonl`; it does **not** stub the `.md`. The parent directory `.hotpot/workspaces/<user>/tasks/` may also be missing for a brand-new user workspace — the create-file tool will materialize parents as needed (and the CLI itself ensures the tasks directory exists at create time, but you must not rely on `ls` to verify).
+- **Do not second-guess the resolved path when `Read` reports "File not found".** That error simply means "you haven't created it yet". Proceed to write at the path you already resolved from `hotpot task active --path` (or built from the `TaskInfo` JSON for `--inactive`).
+- **Do not retry with a different path** if a real OS-level write error occurs (permission denied, disk full, ENOENT for the project root). Surface the error verbatim and stop; silently rerouting the write would lose the task file or land it in the wrong workspace.
 
 ## Task File Content
 
@@ -443,6 +484,7 @@ The task file must be useful on its own for an execution sub-agent. Include enou
 - Do not overwrite a task file unless its path came from `hotpot task active --path` after creating or activating the intended task.
 - Do not proceed if active task ambiguity could cause writing to the wrong task file.
 - Do not use `hotpot task create` without a `--title` value.
+- The `--title` value passed to `hotpot task create` MUST be kebab-case (lowercase ASCII letters/digits + `-`, no spaces, no underscores, no punctuation). See **Task Creation** for the full rule and examples.
 - Preserve user constraints and acceptance criteria exactly.
 - Keep the final task focused enough to execute in one implementation session when possible.
 - The task file must include both `## Task` and `## Plan` sections.
@@ -450,6 +492,7 @@ The task file must be useful on its own for an execution sub-agent. Include enou
 - Do not create a vague task file that only describes the desired outcome without execution steps.
 - Do NOT omit the `## Plan > ### Mode` block. Write `tdd: true` or `tdd: false` explicitly so the execute flow can detect the mode unambiguously. A missing block is treated as `tdd: false`, but writing it explicitly avoids surprise.
 - When `tdd: true`, every `#### Task N` MUST follow the Red / Green / Refactor template with concrete test commands, exact failing-test names, exact implementation files, and exact verification commands. Do not write placeholders.
+- Do NOT `Read`, `Edit`, `ls`, or otherwise probe the task `.md` path before writing it. The `.md` is created by this command's write step, not by `hotpot task create`. A pre-write `Read` will return "File not found", waste a turn, and tempt you to second-guess the path.
 
 ## Final Response
 

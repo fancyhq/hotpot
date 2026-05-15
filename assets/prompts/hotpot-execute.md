@@ -15,6 +15,18 @@ You are executing the currently active Hotpot task. This command is manually tri
 
 Read the active Hotpot task file, inject its full contents into a Hotpot execution agent, review the resulting code with a separate Hotpot review agent, automatically route review findings back to the execution agent for fixes, and stop only when review passes, a blocker occurs, or the fix-review loop limit is reached. The review agent must never modify code.
 
+## Output Language
+
+Apply the project language preference to every natural-language output produced by this command — phase announcements, execution / review reports, fix-loop status lines, candidate summaries surfaced to the user, and the final per-command report. Pass the same language directive into the prompts you embed for the execution and review agents so their output is consistent. Structural anchors and machine-readable tokens (CLI flags, JSON keys, `ACTIVE_CONFLICT:`, markdown section headings, `tdd: true|false`, kebab-case slugs) MUST stay in English. Full rule:
+
+@.hotpot/prompts/output-language.md
+
+Codex / Pi (no `@path` expansion): the thin shell's substitution table maps this to `$ROOT_DIR/.hotpot/prompts/output-language.md`. `Read` that path before proceeding.
+
+## Precondition: Task File Must Exist
+
+The active task `.md` MUST already exist on disk before this command runs. If `Read` on the resolved active path returns "File not found", `/hotpot:new` for this title did not complete its write step. Stop and tell the user to re-run `/hotpot:new` for the task — do NOT silently recreate the file ad-hoc from `overview.jsonl`, the brainstorming and approved design would be lost.
+
 ## Command Usage
 
 - The user-facing invocation pattern is supplied by the platform thin shell.

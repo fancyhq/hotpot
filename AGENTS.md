@@ -11,7 +11,7 @@
 
 ## Design
 
-Before starting any new development task for the first time, read @docs/ARCH.md to understand the project's current design. Whenever a feature is added or modified in a way that diverges from the existing design — and the divergence has been authorized by the user — both @docs/ARCH.md and @docs/ARCH.zh_CN.md must be updated.
+You must first read the @docs/ARCH.md document to understand the project's current execution flow and architecture. When the features you add or modify affect the execution flow, you must update the @docs/ARCH.md and @docs/ARCH.zh_CN.md documents.
 
 - `ARCH.md`: intended for `agent` consumption and native English readers; write it in English.
 - `ARCH.zh_CN.md`: has the same content as `ARCH.md` but written in Simplified Chinese for native Chinese readers; write it in Simplified Chinese.

@@ -23,6 +23,18 @@ Close the Hotpot loop for the active task:
 
 Do not silently write to `.hotpot/issues.jsonl`. Do not stage or commit files without explicit user confirmation. Do not mark the task `Done` until the previous steps succeed or are explicitly skipped.
 
+## Output Language
+
+Apply the project language preference to every natural-language output produced by this command — completion-confirmation questions, candidate summaries (`{promoted, discarded, merged}` proposal), commit-message preview prose shown to the user (the final commit message body itself follows the user's approval), and the final per-command report. Pass the same language directive into the prompts you embed for sub-skills like `summarize-issue-candidates`. Structural anchors and machine-readable tokens (CLI flags, JSON keys, `ACTIVE_CONFLICT:`, markdown section headings, kebab-case slugs, git SHAs, Conventional Commits type prefixes) MUST stay in English. Full rule:
+
+@.hotpot/prompts/output-language.md
+
+Codex / Pi (no `@path` expansion): the thin shell's substitution table maps this to `$ROOT_DIR/.hotpot/prompts/output-language.md`. `Read` that path before proceeding.
+
+## Precondition: Task File Must Exist
+
+The active task `.md` MUST already exist on disk before this command runs. If `Read` on the resolved active path returns "File not found", `/hotpot:new` for this title did not complete its write step. Stop and tell the user to re-run `/hotpot:new` for the task — do NOT silently recreate the file ad-hoc from `overview.jsonl`, the brainstorming and approved design would be lost.
+
 ## Command Usage
 
 - The user-facing invocation pattern is supplied by the platform thin shell.

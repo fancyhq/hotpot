@@ -14,12 +14,14 @@
 use anyhow::{Result, bail};
 use nanoid::nanoid;
 
+use std::fs;
+
 use super::storage::{
     append_task_line, ensure_overview_exists, get_task_list, rewrite_overview_with,
 };
 use super::{CreateMode, TaskInfo, TaskStatus};
 use crate::lock::with_file_lock;
-use crate::paths::overview_file_path;
+use crate::paths::{overview_file_path, task_dir_path};
 
 /// 判断是否允许在 `default` workspace 中继续创建任务。
 ///
@@ -231,5 +233,22 @@ fn create_task_locked(
     };
 
     append_task_line(&path, &new_task)?;
+
+    // Eagerly materialize `<workspace>/tasks/` so the slash command's first
+    // `Write` on `<time>-<title>.md` does not have to rely on its create-file
+    // tool's parent-dir auto-creation behavior. This also keeps `ls` results
+    // consistent for users browsing the workspace right after `task create`.
+    // Failures here are non-fatal: the row is already persisted, and the
+    // create-file tool will surface its own ENOENT later if the directory
+    // really cannot be created.
+    //
+    // 提前把 `<workspace>/tasks/` 物化出来：slash command 在收到 `task create`
+    // 输出后第一时间 `Write` 任务 `.md`，不需要再依赖各平台 Write 工具自动建
+    // 父目录的行为；也让用户用 `ls` 浏览 workspace 时立刻能看到 `tasks/`。
+    // 这一步失败不致命：overview 行已经落盘，真要建不出来 Write 工具会自己
+    // 报 ENOENT；不在这里 bail 是为了不把可恢复的目录问题升级成 `task create`
+    // 整体失败。
+    let _ = fs::create_dir_all(task_dir_path(root_dir, username));
+
     Ok(new_task)
 }

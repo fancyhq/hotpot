@@ -121,9 +121,29 @@ where
     Ok(())
 }
 
-/// 根据提供的 TaskInfo 内容生成文件名
+/// Build the on-disk filename stem for a task: `<time>-<sanitized-title>`.
+///
+/// The `title` field stays human-readable in `overview.jsonl`, but for the
+/// filesystem we collapse any whitespace run into a single `-` so that
+/// titles like `"add login retry"` still produce a shell-safe path
+/// (`2026-05-15-add-login-retry`). This is a defensive layer only — the
+/// `/hotpot:new` prompt asks the AI to produce kebab-case up front; this
+/// function just guarantees the filename never contains raw spaces.
+///
+/// 根据 TaskInfo 生成磁盘文件名 stem：`<time>-<净化后的 title>`。
+///
+/// `overview.jsonl` 中的 title 保留人类可读形式，但写到文件系统时把
+/// title 里的连续空白折叠为单个 `-`，保证类似 `"add login retry"` 的
+/// 旧 title 也能生成 shell 安全的路径（`2026-05-15-add-login-retry`）。
+/// 这是兜底层——`/hotpot:new` 的 prompt 已经要求 AI 给出 kebab-case
+/// 标题；这里只保证最终文件名不会出现裸空格。
 pub fn get_task_filename(task: &TaskInfo) -> String {
-    format!("{}-{}", task.time, task.title)
+    // `split_whitespace` 同时处理首尾空白、连续空格、tab 等情况，
+    // 再用 `-` 串起来即可得到 shell 安全的 title 段。
+    // `split_whitespace` handles leading/trailing/runs/tabs in one shot;
+    // joining with `-` yields a shell-safe title segment.
+    let sanitized_title = task.title.split_whitespace().collect::<Vec<_>>().join("-");
+    format!("{}-{}", task.time, sanitized_title)
 }
 
 /// Returns the task file path for the unique `active=true` row.

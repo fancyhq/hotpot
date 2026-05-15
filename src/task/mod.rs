@@ -604,6 +604,59 @@ mod tests {
         assert_eq!(final_titles, expected, "row set mismatch under concurrency");
     }
 
+    /// Build a minimal `TaskInfo` fixture for filename tests.
+    /// 构造一个仅用于文件名测试的最小 `TaskInfo` 夹具。
+    fn fixture_task(title: &str) -> TaskInfo {
+        TaskInfo {
+            time: chrono::NaiveDate::from_ymd_opt(2026, 5, 15).unwrap(),
+            task_id: "fixture-id".to_string(),
+            title: title.to_string(),
+            commit: None,
+            status: TaskStatus::InProgress,
+            active: true,
+            worktree_path: None,
+            worktree_branch: None,
+            worktree_base_branch: None,
+        }
+    }
+
+    /// kebab-case 标题不应被改动，逐字段保留。
+    /// kebab-case titles pass through `get_task_filename` unchanged.
+    #[test]
+    fn test_get_task_filename_keeps_kebab_case_intact() {
+        let task = fixture_task("add-login-retry");
+        assert_eq!(
+            get_task_filename(&task),
+            "2026-05-15-add-login-retry",
+            "kebab-case 标题应原样保留"
+        );
+    }
+
+    /// 含空格的旧标题（兜底路径）：单空格折成 `-`。
+    /// Legacy space-separated titles get collapsed to a single `-`.
+    #[test]
+    fn test_get_task_filename_collapses_single_spaces() {
+        let task = fixture_task("add login retry");
+        assert_eq!(
+            get_task_filename(&task),
+            "2026-05-15-add-login-retry",
+            "单空格应被折成 `-`"
+        );
+    }
+
+    /// 多空格 / 首尾空白 / Tab 混合：`split_whitespace` 一次性兜底。
+    /// Mixed whitespace (runs, leading/trailing, tabs) all collapse via
+    /// `split_whitespace`.
+    #[test]
+    fn test_get_task_filename_collapses_runs_and_trims() {
+        let task = fixture_task("  add   login\tretry  ");
+        assert_eq!(
+            get_task_filename(&task),
+            "2026-05-15-add-login-retry",
+            "连续空白、首尾空白、tab 应一并折叠"
+        );
+    }
+
     /// `get_active_task_filepath` 遇 >1 条 active 应 bail 列出 id。
     #[test]
     fn test_get_active_task_filepath_rejects_multi_active() {

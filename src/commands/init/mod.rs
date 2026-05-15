@@ -346,6 +346,20 @@ const SHARED_ASSETS: &[Asset] = &[
         ".hotpot/prompts/tdd-protocol.md",
         include_str!("../../../assets/prompts/tdd-protocol.md"),
     ),
+    // 跨工作流共用的「按 `.hotpot/config.toml::language` 决定自然语言输出」
+    // 指令。四份主工作流 prompt (hotpot-new / hotpot-execute / hotpot-finish-work /
+    // tdd-protocol) 都通过 `@.hotpot/prompts/output-language.md`（Claude/OpenCode）
+    // 或 `$ROOT_DIR/.hotpot/prompts/output-language.md`（Codex/Pi）引用。
+    //
+    // Shared "respect `.hotpot/config.toml::language` for natural-language
+    // output" directive. The four main workflow prompts (hotpot-new /
+    // hotpot-execute / hotpot-finish-work / tdd-protocol) reference this file
+    // via `@.hotpot/prompts/output-language.md` (Claude/OpenCode) or the
+    // resolved `$ROOT_DIR/.hotpot/prompts/output-language.md` (Codex/Pi).
+    Asset::owned(
+        ".hotpot/prompts/output-language.md",
+        include_str!("../../../assets/prompts/output-language.md"),
+    ),
     Asset::owned(
         ".hotpot/prompts/hotpot-new.md",
         include_str!("../../../assets/prompts/hotpot-new.md"),

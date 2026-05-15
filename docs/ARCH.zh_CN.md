@@ -16,7 +16,7 @@
 
 ## 核心概念
 
-- **任务文件**（`<workspace>/tasks/<YYYY-MM-DD>-<title>.md`）：自包含的 handoff 文档。必须含 `## Task`、`## Plan`、`## Execution Instructions`。`## Plan > ### Mode` 携带 `- tdd: true|false` 决定 TDD 与默认两种流程。
+- **任务文件**（`<workspace>/tasks/<YYYY-MM-DD>-<title>.md`）：自包含的 handoff 文档。必须含 `## Task`、`## Plan`、`## Execution Instructions`。`## Plan > ### Mode` 携带 `- tdd: true|false` 决定 TDD 与默认两种流程。`<title>` 是 `task create --title` 传入的 kebab-case slug；CLI 在拼文件名时会把 `title` 内残留的连续空白折成单个 `-` 作为兜底（仅防御性兜底，`/hotpot:new` 已要求 AI 直接产出 kebab-case，不做更激进的 slugify）。
 - **任务台账**（`<workspace>/overview.jsonl`）：每个用户一份，强制不变式："同一时刻最多一条 `active=true && status=In Progress` 的行"。
 - **Issue 候选**（`<workspace>/issue-candidates.jsonl`）：临时、按用户隔离的 review 记忆草稿，由 execute 缓冲并在 finish-work 中决策晋升或丢弃。
 - **Issue 记忆**（`.hotpot/issues.jsonl`）：共享、长期。只能通过 `hotpot issues promote` 在用户确认后追加。
@@ -99,4 +99,5 @@ finish-work → 汇总候选 → 用户批准晋升
 - Hook / bootstrap 之间的公共 env-var 契约：`ROOT_DIR`、`HOTPOT_USERNAME`、`HOTPOT_ISSUE_CANDIDATES_FILE`、`HOTPOT_RECORD_ISSUE_CANDIDATE_PROMPT`、`HOTPOT_SUMMARIZE_ISSUE_CANDIDATES_PROMPT`、`HOTPOT_TDD_PROTOCOL_PROMPT`。新增 env-var 时必须同步扩展 `hotpot hook bootstrap` 的输出，四个平台才能拿到。
 - TDD 模式改动必须**同步**落到四个平台的 `new` / `execute` 资产，以及 `hotpot-execution` / `hotpot-review` 子代理。共享协议必须通过 `@.hotpot/prompts/tdd-protocol.md`（Claude/OpenCode）或 `$HOTPOT_TDD_PROTOCOL_PROMPT`（Codex/Pi）引用，**禁止**内联拷贝其内容。
 - 重写 `overview.jsonl` / `issues.jsonl` / `issue-candidates.jsonl` 的临界区都要经过 `src/lock.rs::with_file_lock`。硬约束：**锁持有期间禁止 spawn 子进程**——平台 hook 可能回调 hotpot，触发嵌套死锁。
-- 代码里的输出保持英文（见 `AGENTS.md`）；自然语言对外回复按 `.hotpot/config.toml::language` 决定。
+- 代码里的输出保持英文（见 `AGENTS.md`）；自然语言对外回复按 `.hotpot/config.toml::language` 决定。共享指令存放于 `assets/prompts/output-language.md`，四份主工作流 prompt（`hotpot-new.md` / `hotpot-execute.md` / `hotpot-finish-work.md` / `tdd-protocol.md`）通过 `@.hotpot/prompts/output-language.md`（Claude/OpenCode）或 `$ROOT_DIR/.hotpot/prompts/output-language.md`（Codex/Pi——thin shell 显式列出该路径替换）引用。结构性锚点（CLI flag、JSON 字段、`ACTIVE_CONFLICT:`、markdown 章节标题、`tdd: true|false`、kebab-case slug）无论 language 取何值都**必须保持英文**。
+- `hotpot task create` 只追加 `overview.jsonl` 一行；**不会**创建任务的 `<time>-<title>.md` 文件。`.md` 的创建归 `/hotpot:new` slash command 负责，通过平台的「创建文件」工具完成（Claude `Write`、OpenCode `write`、Codex `apply_patch *** Add File`、Pi `write`）。slash command prompt 必须显式禁止「先 Read 探测再 Write」——`task create` 之后该路径不存在是正常态，不是错误。CLI 会在 `task create` 中尽力 `create_dir_all` `<workspace>/tasks/` 作为兜底（非致命副作用），但 slash command 不能把这点当成契约依赖。

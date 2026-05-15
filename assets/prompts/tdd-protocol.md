@@ -4,6 +4,14 @@ You are running in Hotpot TDD mode. The active task file's `## Plan > ### Mode` 
 
 This protocol is loaded by the orchestrator and applied to both the execution agent and the review agent. The review agent uses it as the audit checklist.
 
+## Output Language
+
+Apply the project language preference to the natural-language portions of your execution report and to any prose you surface to the user (task descriptions, refactor rationale, blocker explanations). The structured Reporting block below (keys: `Task`, `Red`, `Green`, `Refactor`, `command`, `failure`, `pass`, `full validation`, `action`, `rerun`) and the literal phrase `no refactor needed` MUST remain in English regardless of the configured language — the review agent grep's these tokens. Full rule:
+
+@.hotpot/prompts/output-language.md
+
+Codex / Pi (no `@path` expansion): use `$ROOT_DIR/.hotpot/prompts/output-language.md` via `Read`.
+
 ## Red (test first)
 
 - Write or modify the failing test in the file listed under `Files: Test`.

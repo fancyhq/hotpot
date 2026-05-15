@@ -52,4 +52,12 @@ pub(super) const ASSETS: &[Asset] = &[
         ".codex/hooks/hotpot-session-start.cmd",
         include_str!("../../../assets/platforms/codex/hooks/hotpot-session-start.cmd"),
     ),
+    Asset::owned(
+        ".codex/hooks/hotpot-user-prompt-submit.sh",
+        include_str!("../../../assets/platforms/codex/hooks/hotpot-user-prompt-submit.sh"),
+    ),
+    Asset::owned(
+        ".codex/hooks/hotpot-user-prompt-submit.cmd",
+        include_str!("../../../assets/platforms/codex/hooks/hotpot-user-prompt-submit.cmd"),
+    ),
 ];

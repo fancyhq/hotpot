@@ -18,6 +18,10 @@ Pi has no `@path` expansion. When the shared body references `@.hotpot/prompts/<
 
 Platform note: Pi has no dedicated subagents. When the shared body refers to "the registered Hotpot execution agent" or "the registered Hotpot review agent", run the execution and review phases in the same session, strictly separated. Announce the current phase at its start (`I am now in the EXECUTION phase` / `I am now in the READ-ONLY REVIEW phase`) so context does not bleed across phases. The review phase must never use write/edit tools, even in this fallback. This is unchanged in TDD mode.
 
+## Output Language
+
+Pi has no sub-agent boundary, so the language directive must persist across the EXECUTION → READ-ONLY REVIEW phase transition in the same session. The Hotpot Pi extension's `pi.on("context", …)` handler already pushes `HOTPOT_LANGUAGE` and a one-line directive into every provider request, so you should already see the value in the system context for every turn. Reply in that language for all user-facing prose (phase announcements, execution reports, review findings, fix-loop status). Structural anchors stay English regardless: `## Task`, `## Plan`, `### Mode`, `tdd: true|false`, kebab-case slugs, `ACTIVE_CONFLICT:`. See `$ROOT_DIR/.hotpot/prompts/output-language.md` for the full anchor whitelist.
+
 ## Pi Same-Session Review Memory Injection
 
 The registered review subagent on Claude / OpenCode / Codex receives issue memory implicitly through the orchestrator's "Collect Review Context" step. Pi has no subagent boundary, so the same injection MUST be done inline by you before crossing into the read-only review phase. Skipping it makes Pi reviews silently weaker than the other three platforms.

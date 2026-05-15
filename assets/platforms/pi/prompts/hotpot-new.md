@@ -19,3 +19,7 @@ Pi has no `@path` expansion. When the shared body references `@.hotpot/prompts/<
 - `@.hotpot/prompts/hotpot-finish-work.md` → `$HOTPOT_FINISH_WORK_PROMPT`
 
 Platform note: Pi has no dedicated subagents. `new` itself does not need one. If a workflow step ever references "the registered Hotpot execution agent" or "the registered Hotpot review agent", run the corresponding phase in the same session, strictly separated, and announce each phase at its start (`I am now in the EXECUTION phase` / `I am now in the READ-ONLY REVIEW phase`). The review phase must never use write/edit tools.
+
+## Output Language
+
+The Hotpot Pi extension's `pi.on("context", …)` handler pushes `HOTPOT_LANGUAGE` and a one-line directive into every provider request, so the value is already in your system context for every turn. Reply in that language for the brainstorming session, the task `.md` body, and the final summary. Structural anchors stay English regardless: `## Task`, `## Plan`, `### Mode`, `tdd: true|false`, the kebab-case `<title>` slug passed to `hotpot task create --title`, `ACTIVE_CONFLICT:`. See `$ROOT_DIR/.hotpot/prompts/output-language.md` for the full anchor whitelist.

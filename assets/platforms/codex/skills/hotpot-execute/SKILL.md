@@ -22,3 +22,5 @@ Codex has no `@path` expansion. When the shared body references `@.hotpot/prompt
 - `@.hotpot/prompts/get-issue.md` → resolve as `$ROOT_DIR/.hotpot/prompts/get-issue.md` and use `Read`
 
 Platform note: when the shared body refers to "the registered Hotpot execution agent" or "the registered Hotpot review agent", spawn the corresponding custom agent from `.codex/agents/hotpot-execution.toml` or `.codex/agents/hotpot-review.toml`. Codex supports subagents natively, so the review phase runs in a separate read-only context.
+
+Output language reminder: before producing any user-facing reply each turn, restate to yourself "Reply in `$HOTPOT_LANGUAGE`; structural anchors stay English". The Codex `UserPromptSubmit` hook already pushes the same directive into your context every turn — this in-skill reminder is the backup belt.

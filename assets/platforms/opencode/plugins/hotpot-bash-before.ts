@@ -12,6 +12,7 @@ const execFileAsync = promisify(execFile);
 type HotpotContext = {
   ROOT_DIR: string;
   HOTPOT_USERNAME: string;
+  HOTPOT_LANGUAGE: string;
   HOTPOT_ISSUE_CANDIDATES_FILE: string;
   HOTPOT_RECORD_ISSUE_CANDIDATE_PROMPT: string;
   HOTPOT_SUMMARIZE_ISSUE_CANDIDATES_PROMPT: string;

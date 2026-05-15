@@ -33,7 +33,7 @@ use serde::Serialize;
 
 use crate::{
     commands::init::{self, InstallStats},
-    context::{UsernameSource, resolve_username_with_source},
+    context::{UsernameSource, resolve_language_with_source, resolve_username_with_source},
     paths,
 };
 
@@ -107,6 +107,20 @@ pub struct Warning {
 pub struct UpdateReport {
     username: String,
     source: &'static str,
+    /// 已解析的项目输出语言（自然语言回复）。
+    ///
+    /// Resolved natural-language output preference (free-form). Reported
+    /// alongside `username` so operators can confirm Hotpot picked up the
+    /// expected `config.toml::language` (or env override) when debugging
+    /// "why is the agent still replying in English?".
+    ///
+    /// 与 `username` 并列报告，便于排查"agent 为什么还在用英文回复"——
+    /// 看一眼 `hotpot update` 即可知道 language 解析到了哪一档。
+    language: String,
+    /// language 解析链命中的来源标签（`env` / `config_toml` / `default`）。
+    ///
+    /// Source label for [`UpdateReport::language`].
+    language_source: &'static str,
     workspace: String,
     workspace_created: bool,
     refreshed_platforms: Vec<String>,
@@ -156,6 +170,13 @@ pub(crate) fn build_report(args: UpdateArgs) -> Result<UpdateReport> {
         }
         None => resolve_username_with_source(&root_dir)?,
     };
+
+    // ── 1b. 解析 language（带来源）——失败会回退到 English，不会 bail。
+    // ── 1b. Resolve language with source. Resolution is infallible
+    //         (always returns at least `("English", Default)`), so this
+    //         never aborts `hotpot update`; the operator can still see
+    //         which link of the chain produced the value.
+    let (language, language_source) = resolve_language_with_source(&root_dir);
 
     // ── 2. 平台探测 ────────────────────────────────────────────────────
     let platforms = init::detect_installed_platforms(&project_dir);
@@ -260,6 +281,8 @@ pub(crate) fn build_report(args: UpdateArgs) -> Result<UpdateReport> {
     Ok(UpdateReport {
         username,
         source: source.as_str(),
+        language,
+        language_source: language_source.as_str(),
         workspace: workspace_path.display().to_string(),
         workspace_created,
         refreshed_platforms: refreshed,
@@ -347,6 +370,10 @@ fn render_human(report: &UpdateReport, dry_run: bool) {
     println!();
     println!("Hotpot update {mode}— identity & workspace");
     println!("  username : {} (source: {})", report.username, report.source);
+    println!(
+        "  language : {} (source: {})",
+        report.language, report.language_source
+    );
     println!("  workspace: {}", report.workspace);
     println!(
         "             {}",

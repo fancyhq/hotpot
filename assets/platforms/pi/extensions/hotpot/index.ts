@@ -11,6 +11,7 @@ const execFileAsync = promisify(execFile);
 type HotpotContext = {
   ROOT_DIR: string;
   HOTPOT_USERNAME: string;
+  HOTPOT_LANGUAGE: string;
   HOTPOT_ISSUE_CANDIDATES_FILE: string;
   HOTPOT_RECORD_ISSUE_CANDIDATE_PROMPT: string;
   HOTPOT_SUMMARIZE_ISSUE_CANDIDATES_PROMPT: string;
@@ -97,6 +98,25 @@ export default function hotpotExtension(pi: ExtensionAPI) {
             "Use these values for Hotpot-related Bash commands:",
             ...Object.entries(hotpot).map(([key, value]) => `- ${key}: ${value}`),
           ].join("\n"),
+        },
+        // Per-turn output-language reassertion. Pi's `context` event fires
+        // before every provider request, so this is the natural place to
+        // restate the language directive — equivalent to Claude/Codex
+        // `UserPromptSubmit` hooks. Keep it short to avoid context bloat;
+        // the full anchor whitelist lives in
+        // `$ROOT_DIR/.hotpot/prompts/output-language.md`.
+        //
+        // 每轮重申输出语言。Pi 的 `context` 事件在每次 provider 请求前
+        // 触发，是天然的"每轮注入"切点——等价于 Claude/Codex 的
+        // `UserPromptSubmit` 钩子。保持简短，完整锚点清单在
+        // `$ROOT_DIR/.hotpot/prompts/output-language.md`。
+        {
+          role: "system",
+          content: [
+            `Hotpot output language for this turn: \`${hotpot.HOTPOT_LANGUAGE}\`.`,
+            "Reply in that language for all user-facing prose.",
+            "Structural anchors stay English: `## Task`, `## Plan`, `### Mode`, `tdd: true|false`, `ACTIVE_CONFLICT:`, kebab-case slugs.",
+          ].join(" "),
         },
       ],
     };

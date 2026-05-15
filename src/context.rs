@@ -16,7 +16,7 @@ use crate::paths;
 
 /// 已解析的 Hotpot 运行时上下文，供 hook 与业务命令共享。
 ///
-/// 九个 `#[serde(rename = "...")]` 字段名是公共契约：OpenCode 的
+/// 十个 `#[serde(rename = "...")]` 字段名是公共契约：OpenCode 的
 /// `bash-before.ts` 与 Pi 的 `extensions/hotpot/index.ts` 都按这些大写
 /// 下划线键名直接读取 JSON 输出，**字面量不能改动**。
 #[derive(Debug, serde::Serialize)]
@@ -28,6 +28,20 @@ pub struct Context {
     /// 当前会话使用的 Hotpot 用户名。
     #[serde(rename = "HOTPOT_USERNAME")]
     pub username: String,
+
+    /// 项目配置的输出语言（自然语言回复使用）。
+    ///
+    /// Resolved natural-language preference (free-form user-authored
+    /// string) read from `<root>/.hotpot/config.toml::language`. Hooks
+    /// re-inject this value into every model turn so the directive
+    /// cannot drift across long sessions / sub-agent boundaries.
+    ///
+    /// 由 hook 在每轮注入到 additionalContext / systemMessage，避免长
+    /// 会话或子代理边界导致语言指令漂移。值为用户自由书写的字符串
+    /// （例如 `English`、`简体中文`、`日本語`）；解析失败时回退到
+    /// 字面量 `"English"`。结构性锚点无论该值如何都保持英文。
+    #[serde(rename = "HOTPOT_LANGUAGE")]
+    pub language: String,
 
     /// 临时 issue 候选 JSONL 文件路径。
     #[serde(rename = "HOTPOT_ISSUE_CANDIDATES_FILE")]
@@ -260,7 +274,7 @@ pub fn resolve_username(root_dir: &str) -> Result<String> {
 /// label is used by `hotpot update` to explain to the user where their
 /// identity came from.
 pub fn resolve_username_with_source(root_dir: &str) -> Result<(String, UsernameSource)> {
-    if let Some(username) = normalize_username(env::var("HOTPOT_USERNAME").ok()) {
+    if let Some(username) = normalize_string(env::var("HOTPOT_USERNAME").ok()) {
         return Ok((username, UsernameSource::Env));
     }
 
@@ -304,6 +318,94 @@ impl UsernameSource {
     }
 }
 
+/// 解析 Hotpot 自然语言输出偏好。
+///
+/// Resolves the project natural-language preference used for user-facing
+/// output. Chain (matches `output-language.md::Recovery`):
+/// 1. env `HOTPOT_LANGUAGE` (trimmed non-empty)
+/// 2. `<root_dir>/.hotpot/config.toml` top-level `language = "..."`
+/// 3. literal `"English"`
+///
+/// All failure modes (missing file, IO error, malformed TOML, missing
+/// key, empty value) silently fall back to English — language resolution
+/// must **never** abort a hook, since hooks run on every model turn.
+///
+/// 顺序：env `HOTPOT_LANGUAGE` → `<root_dir>/.hotpot/config.toml` 顶层
+/// `language = "..."` → 字面量 `"English"`。任何解析失败一律静默回退到
+/// `"English"`，绝不 `bail!` —— 该函数运行在每一轮 hook 上，必须无声。
+pub fn resolve_language(root_dir: &str) -> String {
+    resolve_language_with_source(root_dir).0
+}
+
+/// 解析 Hotpot 自然语言输出偏好并返回来源标签。
+///
+/// 与 [`resolve_language`] 顺序完全一致，但额外报告命中的链节，供
+/// `hotpot update` 在向用户提示「输出语言已配置为 `<language>`」时说明
+/// 解析来源（env / config / default），与 [`resolve_username_with_source`]
+/// 的风格保持对齐。
+///
+/// Same chain as [`resolve_language`]; reports which link of the
+/// resolution chain produced the value so `hotpot update` can explain
+/// the source to the user.
+pub fn resolve_language_with_source(root_dir: &str) -> (String, LanguageSource) {
+    if let Some(language) = normalize_string(env::var("HOTPOT_LANGUAGE").ok()) {
+        return (language, LanguageSource::Env);
+    }
+
+    if let Some(language) = read_language_from_config_toml(root_dir) {
+        return (language, LanguageSource::ConfigToml);
+    }
+
+    ("English".to_string(), LanguageSource::Default)
+}
+
+/// 从 `<root_dir>/.hotpot/config.toml` 顶层 `language = "..."` 读取值。
+///
+/// Reads the top-level `language` string from `<root_dir>/.hotpot/config.toml`
+/// using `toml_edit` (already a Hotpot dependency). Returns `None` for
+/// any failure: missing file, IO error, malformed TOML, missing key,
+/// non-string value, empty / whitespace-only value. Never panics.
+///
+/// 任何失败（文件不存在、IO 错误、TOML 损坏、缺字段、非字符串、空串）
+/// 都返回 `None`，由调用方继续走链式回退。
+fn read_language_from_config_toml(root_dir: &str) -> Option<String> {
+    let config_path = PathBuf::from(root_dir).join(".hotpot").join("config.toml");
+    let raw = fs::read_to_string(&config_path).ok()?;
+    // toml_edit 容错地保留注释与原始格式；解析失败返回 None 即可。
+    // toml_edit preserves comments/formatting and degrades gracefully on
+    // parse error — falling through to None is the desired behavior here.
+    let doc = raw.parse::<toml_edit::DocumentMut>().ok()?;
+    let item = doc.get("language")?;
+    let value = item.as_str()?;
+    normalize_string(Some(value.to_string()))
+}
+
+/// 命中的 language 来源标签（用于上层报告，不影响解析顺序）。
+///
+/// Language resolution source label (reporting only; ordering is fixed in
+/// [`resolve_language_with_source`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LanguageSource {
+    /// 命中 `HOTPOT_LANGUAGE` 环境变量。
+    Env,
+    /// 命中 `<root>/.hotpot/config.toml` 顶层 `language` 字段。
+    ConfigToml,
+    /// 两条链全部 miss，回退到字面量 `"English"`。
+    Default,
+}
+
+impl LanguageSource {
+    /// JSON / 摘要输出用的稳定字符串标签。
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            LanguageSource::Env => "env",
+            LanguageSource::ConfigToml => "config_toml",
+            LanguageSource::Default => "default",
+        }
+    }
+}
+
 /// 把候选路径解析为绝对路径字符串：先选定 `candidate`，缺失则用 cwd 兜底，
 /// 最后尝试 `canonicalize`，不存在时返回原路径以保持向后兼容。
 fn canonicalize_or_cwd(candidate: Option<PathBuf>) -> Result<PathBuf> {
@@ -317,6 +419,7 @@ fn canonicalize_or_cwd(candidate: Option<PathBuf>) -> Result<PathBuf> {
 /// 由已解析的根目录构建完整 `Context`。
 fn build_context(root_dir: String) -> Result<Context> {
     let username = resolve_username(&root_dir)?;
+    let language = resolve_language(&root_dir);
     let issue_candidates_file = paths::issue_candidates_file_path(&root_dir, &username)
         .display()
         .to_string();
@@ -342,6 +445,7 @@ fn build_context(root_dir: String) -> Result<Context> {
     Ok(Context {
         root_dir,
         username,
+        language,
         issue_candidates_file,
         record_issue_candidate_prompt,
         summarize_issue_candidates_prompt,
@@ -365,8 +469,16 @@ fn prompt_path(root_dir: &str, name: &str) -> PathBuf {
         .join(name)
 }
 
-/// 只在字符串非空时返回 `Some`。
-fn normalize_username(value: Option<String>) -> Option<String> {
+/// 只在 trim 后非空时返回 `Some`。
+///
+/// Generic "trim + non-empty" gate, shared by username / language /
+/// future free-form string resolutions. Lifting it from
+/// `normalize_username` to `normalize_string` keeps a single place to
+/// audit what "blank value" means across all resolution chains.
+///
+/// 把"空白即空"的判定收敛到一个函数，方便统一审计 username、language
+/// 以及未来其他自由文本字段的回退规则。
+fn normalize_string(value: Option<String>) -> Option<String> {
     value.and_then(|value| {
         let trimmed = value.trim();
         (!trimmed.is_empty()).then(|| trimmed.to_string())
@@ -383,8 +495,174 @@ fn git_username(root_dir: &str, args: &[&str]) -> Result<Option<String>> {
     match output {
         Ok(output) if output.status.success() => {
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            Ok(normalize_username(Some(stdout)))
+            Ok(normalize_string(Some(stdout)))
         }
         Ok(_) | Err(_) => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! `resolve_language*` 单元测试。
+    //!
+    //! 全部 env-mutating 测试通过 `env_lock()` 串行化（同 task/mod.rs 风格），
+    //! 避免 cargo 默认并发让 `HOTPOT_LANGUAGE` 互相污染。配置文件写入到
+    //! `env::temp_dir()` 下的唯一目录，避免与真实 `.hotpot/config.toml` 冲突。
+    //!
+    //! Unit tests for the language resolver. Env-mutating tests are
+    //! serialized through `env_lock()` to keep `HOTPOT_LANGUAGE` writes
+    //! from racing across cargo's parallel runner. Each test materializes
+    //! its own `.hotpot/config.toml` in `env::temp_dir()` so it cannot
+    //! collide with the real project state.
+    use std::{
+        fs,
+        path::PathBuf,
+        sync::{Mutex, MutexGuard},
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use super::*;
+
+    /// 串行化所有触碰 `HOTPOT_LANGUAGE` 的测试。
+    fn env_lock() -> MutexGuard<'static, ()> {
+        static LOCK: Mutex<()> = Mutex::new(());
+        LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// 创建唯一临时项目根目录。
+    fn unique_root(label: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = env::temp_dir().join(format!("hotpot-lang-{label}-{nanos}"));
+        fs::create_dir_all(dir.join(".hotpot")).unwrap();
+        dir
+    }
+
+    /// 在 `<root>/.hotpot/config.toml` 写指定原始内容。
+    fn write_config(root: &PathBuf, contents: &str) {
+        fs::write(root.join(".hotpot/config.toml"), contents).unwrap();
+    }
+
+    /// SAFETY: callers hold `env_lock()`; 2024 edition flags env mutators
+    /// as unsafe due to global state.
+    unsafe fn clear_lang_env() {
+        unsafe { env::remove_var("HOTPOT_LANGUAGE") };
+    }
+
+    #[test]
+    fn resolves_language_from_env_override() {
+        let _guard = env_lock();
+        let root = unique_root("env-override");
+        // 无 config.toml，仅靠 env 命中。
+        unsafe { env::set_var("HOTPOT_LANGUAGE", "简体中文") };
+
+        let (lang, source) = resolve_language_with_source(&root.display().to_string());
+        assert_eq!(lang, "简体中文");
+        assert_eq!(source, LanguageSource::Env);
+
+        unsafe { clear_lang_env() };
+    }
+
+    #[test]
+    fn resolves_language_from_config_toml_top_level() {
+        let _guard = env_lock();
+        unsafe { clear_lang_env() };
+        let root = unique_root("config-toml");
+        write_config(&root, "language = \"日本語\"\n");
+
+        let (lang, source) = resolve_language_with_source(&root.display().to_string());
+        assert_eq!(lang, "日本語");
+        assert_eq!(source, LanguageSource::ConfigToml);
+    }
+
+    #[test]
+    fn commented_out_default_yields_english() {
+        let _guard = env_lock();
+        unsafe { clear_lang_env() };
+        let root = unique_root("commented-default");
+        // 模拟 hotpot-config.toml 模板原状：language 行被注释。
+        write_config(
+            &root,
+            "# Hotpot project configuration.\n# language = \"English\"\n",
+        );
+
+        let (lang, source) = resolve_language_with_source(&root.display().to_string());
+        assert_eq!(lang, "English");
+        assert_eq!(source, LanguageSource::Default);
+    }
+
+    #[test]
+    fn empty_value_yields_english() {
+        let _guard = env_lock();
+        unsafe { clear_lang_env() };
+        let root = unique_root("empty-value");
+        write_config(&root, "language = \"\"\n");
+
+        let (lang, source) = resolve_language_with_source(&root.display().to_string());
+        assert_eq!(lang, "English");
+        assert_eq!(source, LanguageSource::Default);
+    }
+
+    #[test]
+    fn corrupt_toml_yields_english_no_panic() {
+        let _guard = env_lock();
+        unsafe { clear_lang_env() };
+        let root = unique_root("corrupt-toml");
+        // 故意写入未闭合引号的 TOML，确认解析器 None 之后我们回退到 English。
+        write_config(&root, "language = \"unterminated\nfoo = bar baz\n");
+
+        let (lang, source) = resolve_language_with_source(&root.display().to_string());
+        assert_eq!(lang, "English");
+        assert_eq!(source, LanguageSource::Default);
+    }
+
+    #[test]
+    fn env_beats_config() {
+        let _guard = env_lock();
+        let root = unique_root("env-beats-config");
+        write_config(&root, "language = \"日本語\"\n");
+        unsafe { env::set_var("HOTPOT_LANGUAGE", "Français") };
+
+        let (lang, source) = resolve_language_with_source(&root.display().to_string());
+        assert_eq!(lang, "Français");
+        assert_eq!(source, LanguageSource::Env);
+
+        unsafe { clear_lang_env() };
+    }
+
+    #[test]
+    fn whitespace_is_trimmed() {
+        let _guard = env_lock();
+        unsafe { clear_lang_env() };
+        let root = unique_root("whitespace");
+        write_config(&root, "language = \"   简体中文   \"\n");
+
+        let (lang, _source) = resolve_language_with_source(&root.display().to_string());
+        assert_eq!(lang, "简体中文");
+    }
+
+    #[test]
+    fn missing_file_yields_english() {
+        let _guard = env_lock();
+        unsafe { clear_lang_env() };
+        let root = unique_root("missing-file");
+        // 不写 config.toml，跑解析。
+        let (lang, source) = resolve_language_with_source(&root.display().to_string());
+        assert_eq!(lang, "English");
+        assert_eq!(source, LanguageSource::Default);
+    }
+
+    #[test]
+    fn non_string_value_yields_english() {
+        let _guard = env_lock();
+        unsafe { clear_lang_env() };
+        let root = unique_root("non-string");
+        write_config(&root, "language = 42\n");
+
+        let (lang, source) = resolve_language_with_source(&root.display().to_string());
+        assert_eq!(lang, "English");
+        assert_eq!(source, LanguageSource::Default);
     }
 }

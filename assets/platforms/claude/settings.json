@@ -25,6 +25,19 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hotpot hook claude user-prompt-submit",
+            "timeout": 5,
+            "statusMessage": "Reasserting Hotpot output language"
+          }
+        ]
+      }
     ]
   }
 }

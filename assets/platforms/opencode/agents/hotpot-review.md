@@ -56,6 +56,10 @@ The orchestrator must provide:
   - Green diff contains code unrelated to the failing test (new features, broad refactors, removed unrelated code) → `Medium`-severity finding "Green scope bloat for Task <N>".
   - Refactor block has neither a concrete action nor the literal phrase `no refactor needed` → `Medium`-severity finding "Refactor decision missing for Task <N>".
 
+## Output Language
+
+Hotpot's OpenCode plugin (`shell.env`) exports `HOTPOT_LANGUAGE` and the orchestrator restates the language directive in its prompt — use that value for findings prose, severity rationales, and residual-risk notes. Structural anchors stay English regardless: severity labels (`Critical` / `High` / `Medium` / `Low`), `No findings.`, `TDD conformance: passed.`, file paths, and section headings. See `@.hotpot/prompts/output-language.md` for the full anchor whitelist.
+
 ## Output Format
 
 Start with findings:

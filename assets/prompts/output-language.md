@@ -15,15 +15,18 @@ so the agent there must `Read` the resolved path manually.
 
 # Output Language
 
-Before producing any natural-language output for the user, check the project language preference and obey it for the entire command.
+Before producing any natural-language output for the user, obey the project language preference. The configured value is pushed into your context on every model turn by Hotpot's platform hooks — you do not need to read `config.toml` yourself.
 
-## How To Detect The Language
+## How The Language Reaches You
 
-1. Read `$ROOT_DIR/.hotpot/config.toml` if it exists.
-2. If a top-level `language` field is present and non-empty, treat its value as a direct instruction for the output language. The value is free-form, written verbatim by the user. Examples: `简体中文`, `english`, `日本語`, `Français`, `zh-CN`.
-3. If the file is missing, the field is missing, or the value is empty, default to English.
+Hotpot resolves `<project>/.hotpot/config.toml::language` (or the `HOTPOT_LANGUAGE` env override) in Rust on every hook invocation and re-injects it into your context **each turn**:
 
-Do this detection **once at the start of the command** and remember the result for the rest of the session — do not re-read `config.toml` between every message.
+- **Claude Code**: `PreToolUse` + `SubagentStart` + `UserPromptSubmit` hooks each carry a `HOTPOT_LANGUAGE: <value>` line plus a one-line directive in `additionalContext`.
+- **Codex**: `PreToolUse` + `SessionStart` + `UserPromptSubmit` hooks carry the same value via `systemMessage` and `additionalContext`.
+- **OpenCode**: the Hotpot plugin's `shell.env` exports `HOTPOT_LANGUAGE` to every Bash tool call; the orchestrator and sub-agent bodies also restate the directive.
+- **Pi**: `pi.on("context", …)` injects `HOTPOT_LANGUAGE` plus a one-line directive into every provider request.
+
+Trust the **most recent injection** you have seen — it is always fresh. The value is a free-form string written verbatim by the user (e.g. `简体中文`, `english`, `日本語`, `Français`, `zh-CN`). When in doubt, default to English.
 
 ## What MUST Follow The Configured Language
 
@@ -53,4 +56,6 @@ When in doubt, prefer keeping a token in English. Translation is for prose the u
 
 ## Recovery When `language` Is Unreadable
 
-If `config.toml` exists but parsing fails (corrupt TOML, unreadable file), do **not** abort the command. Fall back to English for natural-language output, surface a single short warning to the user mentioning the file path, and continue. The user can fix the file at their leisure; failing the whole workflow over a config typo is worse than degrading gracefully.
+Hotpot's Rust resolver already handles all parse / IO failures silently and falls back to English (`HOTPOT_LANGUAGE=English`). In normal operation you should never see a missing or corrupt value — the hook always delivers a usable string. If you somehow still observe an empty / blank `HOTPOT_LANGUAGE` in an injected payload, treat it as English and continue; never abort the workflow over a language ambiguity.
+
+If you suspect the user's `config.toml::language` is being ignored (e.g. you keep replying in English when the user clearly wants Chinese), run `hotpot update --json` and check the `language` / `language_source` fields — that report shows which link of the resolution chain produced the current value.

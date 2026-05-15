@@ -34,6 +34,13 @@ pub enum ClaudeHookCommand {
     PreToolUse,
     /// Prepare Hotpot review-memory context when a Hotpot subagent starts.
     SubagentStart,
+    /// Reassert Hotpot output language at the start of every user turn.
+    ///
+    /// Restates `HOTPOT_LANGUAGE` to fight the "instruction once, drift
+    /// forever" pattern. Fires on Claude Code's `UserPromptSubmit` event.
+    ///
+    /// 每条用户消息前重申输出语言；对抗"一次指令长会话漂移"。
+    UserPromptSubmit,
 }
 
 /// Codex hook events supported by `hotpot hook codex`.
@@ -43,6 +50,10 @@ pub enum CodexHookCommand {
     PreToolUse,
     /// Prepare Hotpot review-memory context when a Codex session starts.
     SessionStart,
+    /// Reassert Hotpot output language at the start of every user turn.
+    ///
+    /// 同 Claude `UserPromptSubmit`：Codex 每轮用户消息前重申输出语言。
+    UserPromptSubmit,
 }
 
 /// Bootstrap the temporary Hotpot runtime context for the current hook.
@@ -100,6 +111,7 @@ pub fn claude(command: ClaudeHookCommand) -> Result<()> {
         match command {
             ClaudeHookCommand::PreToolUse => "PreToolUse",
             ClaudeHookCommand::SubagentStart => "SubagentStart",
+            ClaudeHookCommand::UserPromptSubmit => "UserPromptSubmit",
         },
     );
 
@@ -109,6 +121,7 @@ pub fn claude(command: ClaudeHookCommand) -> Result<()> {
             "Hotpot shell context was resolved from the Claude Code hook payload cwd.",
         ),
         ClaudeHookCommand::SubagentStart => review_memory_message(&context),
+        ClaudeHookCommand::UserPromptSubmit => language_directive_message(&context.language),
     };
 
     print_value(&json!({
@@ -141,6 +154,13 @@ pub fn codex(command: CodexHookCommand) -> Result<()> {
         }
         CodexHookCommand::SessionStart => {
             let message = review_memory_message(&context);
+            print_value(&json!({
+                "systemMessage": message,
+                "additionalContext": message,
+            }))
+        }
+        CodexHookCommand::UserPromptSubmit => {
+            let message = language_directive_message(&context.language);
             print_value(&json!({
                 "systemMessage": message,
                 "additionalContext": message,
@@ -179,6 +199,10 @@ fn print_shell_exports(context: &Context) {
     println!(
         "export HOTPOT_USERNAME='{}'",
         shell_quote(&context.username)
+    );
+    println!(
+        "export HOTPOT_LANGUAGE='{}'",
+        shell_quote(&context.language)
     );
     println!(
         "export HOTPOT_ISSUE_CANDIDATES_FILE='{}'",
@@ -246,17 +270,43 @@ fn codex_shell_context_message(context: &Context) -> String {
     lines.join("\n")
 }
 
+/// Builds the per-turn language directive for `UserPromptSubmit` hooks.
+///
+/// Two lines, < 200 chars: short enough to inline into every model turn
+/// without bloating `additionalContext`. The structural-anchor whitelist
+/// here is a representative sample (the long list lives in
+/// `assets/prompts/output-language.md`); the goal is to re-prime the
+/// model against the most common drift trigger every turn.
+///
+/// 简短的"每轮重申"指令（两行 < 200 字符），用于 Claude/Codex 的
+/// `UserPromptSubmit` 钩子。完整锚点清单仍在 `output-language.md`，
+/// 这里只列最常诱发漂移的几个，避免 additionalContext 膨胀。
+fn language_directive_message(language: &str) -> String {
+    format!(
+        "Hotpot output language for this turn: `{language}`. \
+         Reply in that language for all user-facing prose. \
+         Structural anchors stay English: `## Task`, `## Plan`, `### Mode`, `tdd: true|false`, `ACTIVE_CONFLICT:`, kebab-case slugs."
+    )
+}
+
 /// Builds the review-memory bootstrap message for subagent/session hooks.
+///
+/// Subagent/session boundaries are where the orchestrator's once-only
+/// language detection most often gets dropped, so the bootstrap message
+/// carries both the literal `HOTPOT_LANGUAGE` value (for grep / shell
+/// reuse) and a one-line directive (for direct steering).
 fn review_memory_message(context: &Context) -> String {
     [
         "Hotpot review-memory context is ready.".to_string(),
         format!("- ROOT_DIR: {}", context.root_dir),
         format!("- HOTPOT_USERNAME: {}", context.username),
+        format!("- HOTPOT_LANGUAGE: {}", context.language),
         format!(
             "- HOTPOT_ISSUE_CANDIDATES_FILE: {}",
             context.issue_candidates_file
         ),
         "Record only validated, reusable repair memories in this JSONL file.".to_string(),
+        language_directive_message(&context.language),
     ]
     .join("\n")
 }
@@ -266,6 +316,7 @@ fn context_lines(context: &Context) -> Vec<String> {
     vec![
         format!("- ROOT_DIR: {}", context.root_dir),
         format!("- HOTPOT_USERNAME: {}", context.username),
+        format!("- HOTPOT_LANGUAGE: {}", context.language),
         format!(
             "- HOTPOT_ISSUE_CANDIDATES_FILE: {}",
             context.issue_candidates_file
@@ -296,6 +347,7 @@ fn shell_export_assignments(context: &Context) -> String {
     [
         ("ROOT_DIR", &context.root_dir),
         ("HOTPOT_USERNAME", &context.username),
+        ("HOTPOT_LANGUAGE", &context.language),
         (
             "HOTPOT_ISSUE_CANDIDATES_FILE",
             &context.issue_candidates_file,

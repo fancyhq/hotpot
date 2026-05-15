@@ -16,3 +16,7 @@ Pi has no `@path` expansion. When the shared body references `@.hotpot/prompts/<
 - `@.hotpot/prompts/hotpot-execute.md` → `$HOTPOT_EXECUTE_PROMPT`
 
 Platform note: Pi has no dedicated execution subagent. When the shared body's "Offer to Resume Next Task" step needs to invoke the Hotpot execution agent, continue the work in this same session by following the execution-phase rules in `$HOTPOT_EXECUTE_PROMPT`, omitting the review phase, fix loop, and candidate-recording step. Tell the user explicitly that if they want the review and fix loop on the resumed task, they need to run `/hotpot-execute` manually next.
+
+## Output Language
+
+The Hotpot Pi extension's `pi.on("context", …)` handler pushes `HOTPOT_LANGUAGE` and a one-line directive into every provider request, so the value is already in your system context for every turn. Reply in that language for the candidate summary, promotion prompts, commit confirmation prose, and the final report. Structural anchors stay English regardless: `## Task`, `## Plan`, `### Mode`, `tdd: true|false`, kebab-case slugs, `ACTIVE_CONFLICT:`. See `$ROOT_DIR/.hotpot/prompts/output-language.md` for the full anchor whitelist.

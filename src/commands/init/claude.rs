@@ -51,4 +51,12 @@ pub(super) const ASSETS: &[Asset] = &[
         ".claude/hooks/hotpot-subagent-start.cmd",
         include_str!("../../../assets/platforms/claude/hooks/hotpot-subagent-start.cmd"),
     ),
+    Asset::owned(
+        ".claude/hooks/hotpot-user-prompt-submit.sh",
+        include_str!("../../../assets/platforms/claude/hooks/hotpot-user-prompt-submit.sh"),
+    ),
+    Asset::owned(
+        ".claude/hooks/hotpot-user-prompt-submit.cmd",
+        include_str!("../../../assets/platforms/claude/hooks/hotpot-user-prompt-submit.cmd"),
+    ),
 ];

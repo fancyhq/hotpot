@@ -21,3 +21,5 @@ Codex has no `@path` expansion. When the shared body references `@.hotpot/prompt
 - `@.hotpot/prompts/hotpot-execute.md` → `$HOTPOT_EXECUTE_PROMPT`
 
 Platform note: when the shared body's "Offer to Resume Next Task" step needs to invoke the Hotpot execution agent, spawn the custom agent from `.codex/agents/hotpot-execution.toml`.
+
+Output language reminder: before producing any user-facing reply each turn, restate to yourself "Reply in `$HOTPOT_LANGUAGE`; structural anchors stay English". The Codex `UserPromptSubmit` hook already pushes the same directive into your context every turn — this in-skill reminder is the backup belt.

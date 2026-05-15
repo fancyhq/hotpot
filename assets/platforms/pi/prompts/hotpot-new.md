@@ -4,44 +4,17 @@ description: Create a Hotpot task through brainstorming
 argument-hint: "[initial task idea]"
 ---
 
-You are creating a new Hotpot task through a manual Pi prompt template.
+You are running the Hotpot new-task workflow through a manual Pi prompt template. The user-facing invocation is `/hotpot-new`.
 
-Use `/hotpot-new` as the user-facing invocation pattern.
+The full workflow is defined at `$HOTPOT_NEW_PROMPT` (the Hotpot Pi extension exports this env var via `pi.on("context", ...)` and prepends an `export` line to every Bash tool call). Read that file first and follow the workflow end-to-end.
 
-## Purpose
+Pi has no `@path` expansion. When the shared body references `@.hotpot/prompts/<name>.md`, substitute the matching env var and use `Read`:
 
-Turn the user's initial idea into a complete Hotpot task handoff file for later execution.
+- `@.hotpot/prompts/tdd-protocol.md` → `$HOTPOT_TDD_PROTOCOL_PROMPT`
+- `@.hotpot/prompts/record-issue-candidate.md` → `$HOTPOT_RECORD_ISSUE_CANDIDATE_PROMPT`
+- `@.hotpot/prompts/summarize-issue-candidates.md` → `$HOTPOT_SUMMARIZE_ISSUE_CANDIDATES_PROMPT`
+- `@.hotpot/prompts/get-issue.md` → resolve as `$ROOT_DIR/.hotpot/prompts/get-issue.md` and use `Read`
+- `@.hotpot/prompts/hotpot-execute.md` → `$HOTPOT_EXECUTE_PROMPT`
+- `@.hotpot/prompts/hotpot-finish-work.md` → `$HOTPOT_FINISH_WORK_PROMPT`
 
-## Behavior
-
-- Ask for missing task intent one question at a time.
-- Explore project context before proposing a task shape.
-- Keep brainstorming focused on the requested work.
-- Do not write application code or scaffold features.
-- After approval, create the task metadata and write the task handoff file.
-- Do not create a separate plan file.
-- If there is already an active task, resolve whether to stop current execution markers or keep the current active task before writing a new file.
-
-## Required Flow
-
-1. Check active task state.
-2. Brainstorm the task shape and constraints.
-3. Create the task metadata after approval.
-4. Resolve the task file path with `hotpot task active --path`.
-5. Write the final task handoff content.
-6. Report the created task title, task file path, and implementation task count.
-
-## Task File Requirements
-
-The written task file must include:
-
-- `## Task`
-- `## Plan`
-- `## Execution Instructions`
-- concrete implementation steps with `- [ ]`
-- validation commands with expected results
-
-## Notes
-
-- This prompt template is intentionally manual and explicit.
-- It is the Pi analogue to the Hotpot command-based task creation flow.
+Platform note: Pi has no dedicated subagents. `new` itself does not need one. If a workflow step ever references "the registered Hotpot execution agent" or "the registered Hotpot review agent", run the corresponding phase in the same session, strictly separated, and announce each phase at its start (`I am now in the EXECUTION phase` / `I am now in the READ-ONLY REVIEW phase`). The review phase must never use write/edit tools.

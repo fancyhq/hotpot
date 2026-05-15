@@ -11,10 +11,41 @@ anyhow = "1.0.102"
 indoc = "2.0.7"
 nanoid = "0.5.0"
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
+serde_json = { version = "1.0.149", features = ["preserve_order"] }
+toml_edit = "0.22"
 chrono = { version = "0.4.44", default-features = false, features = [
     "clock",
     "serde",
 ] }
 clap = { version = "4.6.1", features = ["derive"] }
 tiny_http = "0.12.0"
+# 跨进程 advisory 锁，用于保护 overview.jsonl / issues.jsonl / issue-candidates.jsonl
+# 的并发写入；详见 src/lock.rs。
+# Cross-process advisory locking; protects concurrent writes to overview /
+# issues / issue-candidates JSONL files. See src/lock.rs.
+fs2 = "0.4"
+
+# 发布构建以「最小体积 + 完整功能」为目标。
+# - opt-level = "z":  以体积为优先（比 "s" 更激进，对本项目 IO/字符串重的代码
+#   实测无明显性能回退）。
+# - lto = true:       fat LTO 跨 crate 内联与消除死代码，对依赖了 clap / chrono /
+#   toml_edit 的多 crate 构建收益最大。
+# - codegen-units = 1: 关闭并行 codegen，最大化 LTO 与内联机会。
+# - strip = "symbols": 由 cargo 直接调用 strip 移除符号表，省去手动后处理。
+# - panic = "abort":   去掉 unwinding 表与 landing pad；hotpot 是 CLI，错误统一
+#   走 `anyhow::Result`，不依赖 panic 捕获。
+#
+# Release profile tuned for "smallest binary, full feature parity":
+# - opt-level "z" optimizes for size; profile is IO/string-heavy so the
+#   speed delta vs "s"/"3" is negligible in practice.
+# - Fat LTO + codegen-units=1 maximizes cross-crate inlining and dead-code
+#   elimination across clap / chrono / toml_edit.
+# - `strip = "symbols"` lets cargo run strip post-link (saves an extra step).
+# - `panic = "abort"` removes unwinding tables; hotpot funnels errors through
+#   `anyhow::Result` and never catches panics.
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = "symbols"
+panic = "abort"

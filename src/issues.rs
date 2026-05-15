@@ -4,6 +4,7 @@ use anyhow::{Context, Ok, Result};
 use indoc::indoc;
 use serde::{Deserialize, Serialize};
 
+use crate::lock::with_file_lock;
 use crate::paths::{issue_candidates_file_path, issues_file_path};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -172,41 +173,86 @@ pub fn get_issue_candidates_list(root_dir: &str, username: &str) -> Result<Vec<I
 }
 
 /// Appends one temporary issue candidate to the current user's JSONL file.
+///
+/// 持有 per-user candidates 文件的 advisory 锁，与其他可能并发的写入入口
+/// （未来扩展 / 同用户多终端）保持互斥。
 pub fn append_issue_candidate(
     root_dir: &str,
     username: &str,
     candidate: &IssueCandidate,
 ) -> Result<()> {
     let candidates_file_path = ensure_issue_candidates_exists(root_dir, username)?;
-    let mut line = serde_json::to_string(candidate).context("序列化issue候选失败")?;
-    line.push('\n');
+    with_file_lock(&candidates_file_path, || {
+        let mut line = serde_json::to_string(candidate).context("序列化issue候选失败")?;
+        line.push('\n');
 
-    fs::OpenOptions::new()
-        .append(true)
-        .open(&candidates_file_path)
-        .with_context(|| {
-            format!(
-                "打开issue候选文件失败，路径：{}",
-                candidates_file_path.display()
-            )
-        })?
-        .write_all(line.as_bytes())
-        .with_context(|| {
-            format!(
-                "写入issue候选文件失败，路径：{}",
-                candidates_file_path.display()
-            )
-        })
+        fs::OpenOptions::new()
+            .append(true)
+            .open(&candidates_file_path)
+            .with_context(|| {
+                format!(
+                    "打开issue候选文件失败，路径：{}",
+                    candidates_file_path.display()
+                )
+            })?
+            .write_all(line.as_bytes())
+            .with_context(|| {
+                format!(
+                    "写入issue候选文件失败，路径：{}",
+                    candidates_file_path.display()
+                )
+            })
+    })
+}
+
+/// Appends one promoted [`Issue`] to the project-shared `.hotpot/issues.jsonl`.
+///
+/// This is the only write entry point into long-term review memory. Callers
+/// (currently `hotpot issues promote`) must obtain explicit user confirmation
+/// before invoking it. Deduplication is intentionally not performed here:
+/// merging near-duplicate candidates is the job of
+/// `.hotpot/prompts/summarize-issue-candidates.md`, and re-implementing it in Rust
+/// would create two sources of truth that drift apart.
+///
+/// 向项目级 `.hotpot/issues.jsonl` 追加一条已晋升的 [`Issue`]。这是写入
+/// 长期 review 记忆的唯一入口，目前由 `hotpot issues promote` 调用，
+/// 调用前必须获得用户确认。**这里不做去重**：近似候选的合并由
+/// `.hotpot/prompts/summarize-issue-candidates.md` 的 LLM 流程负责，在 Rust 里
+/// 再实现一遍只会让两边逻辑漂移。
+pub fn append_issue(root_dir: &str, issue: &Issue) -> Result<()> {
+    let issues_file_path = ensure_issues_exists(root_dir)?;
+    // `.hotpot/issues.jsonl` 是项目级共享文件，最易遭并发写竞争——加锁
+    // 是 FLOW.md 已知缺口 #8 的根治手段（参见 src/lock.rs 头注释）。
+    // `.hotpot/issues.jsonl` is the project-shared file most likely to see
+    // concurrent writes; the lock closes FLOW.md known-gap #8.
+    with_file_lock(&issues_file_path, || {
+        let mut line = serde_json::to_string(issue).context("序列化issue失败")?;
+        line.push('\n');
+
+        fs::OpenOptions::new()
+            .append(true)
+            .open(&issues_file_path)
+            .with_context(|| format!("打开issues文件失败，路径：{}", issues_file_path.display()))?
+            .write_all(line.as_bytes())
+            .with_context(|| format!("写入issues文件失败，路径：{}", issues_file_path.display()))
+    })
 }
 
 /// Clears temporary issue candidates after they are promoted or deliberately discarded.
+///
+/// 与 [`append_issue_candidate`] 共用同一把 advisory 锁——清空操作期间
+/// 必须独占文件，避免并发 add 把刚写入的候选连带清掉。
+/// Shares the candidates advisory lock with [`append_issue_candidate`] to
+/// stop a concurrent add from being clobbered by the truncate.
 pub fn clear_issue_candidates(root_dir: &str, username: &str) -> Result<()> {
     let candidates_file_path = ensure_issue_candidates_exists(root_dir, username)?;
-    fs::write(&candidates_file_path, "").with_context(|| {
-        format!(
-            "清空issue候选文件失败，路径：{}",
-            candidates_file_path.display()
-        )
+    with_file_lock(&candidates_file_path, || {
+        fs::write(&candidates_file_path, "").with_context(|| {
+            format!(
+                "清空issue候选文件失败，路径：{}",
+                candidates_file_path.display()
+            )
+        })
     })
 }
 
@@ -462,5 +508,74 @@ mod tests {
         clear_issue_candidates(&root_dir, username).unwrap();
         let candidates = get_issue_candidates_list(&root_dir, username).unwrap();
         assert!(candidates.is_empty());
+    }
+
+    /// 多线程并发 `append_issue` 不丢更新：N 个线程各追加一条 Issue，
+    /// 最终 `.hotpot/issues.jsonl` 应该恰好出现 N 条对应条目。
+    ///
+    /// Concurrent `append_issue` from N threads must persist exactly N rows.
+    /// Without the cross-process lock this is the FLOW.md known-gap #8
+    /// scenario for the project-shared file.
+    #[test]
+    fn test_concurrent_append_issue_does_not_lose_rows() {
+        use std::sync::Arc;
+        use std::thread;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        // 自有 tmp root 避免污染仓库根 `.hotpot/issues.jsonl`，并让本测试
+        // 与并发跑的 `test_render_issues_to_markdown` 互不干扰。
+        // Isolated tmp root so we don't pollute the repo's issues.jsonl
+        // (and don't race with the markdown-render test).
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let tmp_root = std::env::temp_dir().join(format!("hotpot-issues-concurrent-{nanos}"));
+        fs::create_dir_all(tmp_root.join(".hotpot")).unwrap();
+        let root_dir = Arc::new(tmp_root.display().to_string());
+
+        const THREADS: u32 = 8;
+        let handles: Vec<_> = (0..THREADS)
+            .map(|i| {
+                let root_dir = Arc::clone(&root_dir);
+                thread::spawn(move || {
+                    let issue = Issue {
+                        date: chrono::NaiveDate::from_ymd_opt(2026, 5, 15).unwrap(),
+                        title: format!("issue-{i}"),
+                        kind: IssueKind::Bug,
+                        tags: vec![],
+                        paths: vec![],
+                        scene: String::new(),
+                        description: String::new(),
+                        review_check: String::new(),
+                        solution: String::new(),
+                        source: IssueSource {
+                            changed_files: vec![],
+                            summary: format!("concurrent-{i}"),
+                        },
+                    };
+                    append_issue(&root_dir, &issue).unwrap_or_else(|e| panic!("thread {i}: {e}"))
+                })
+            })
+            .collect();
+
+        for h in handles {
+            h.join().expect("thread panicked");
+        }
+
+        let issues = get_issues_list(&root_dir).unwrap();
+        assert_eq!(
+            issues.len() as u32,
+            THREADS,
+            "expected {THREADS} rows in shared issues.jsonl, got {}: {:?}",
+            issues.len(),
+            issues.iter().map(|i| &i.title).collect::<Vec<_>>()
+        );
+        // 标题集合应恰好对应 0..THREADS。
+        let mut titles: Vec<String> = issues.iter().map(|i| i.title.clone()).collect();
+        titles.sort();
+        let mut expected: Vec<String> = (0..THREADS).map(|i| format!("issue-{i}")).collect();
+        expected.sort();
+        assert_eq!(titles, expected, "row set mismatch under concurrency");
     }
 }

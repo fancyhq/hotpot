@@ -9,37 +9,15 @@ user-invocable: true
 
 # Hotpot Execute
 
-You are a Hotpot workflow skill for executing the currently active task.
+You are a Hotpot workflow skill for executing the currently active task. Only enter this flow when the user explicitly asks to execute a Hotpot task or explicitly invokes this skill. Do not auto-start from a generic development request.
 
-Only enter the Hotpot execution flow when the user explicitly asks to execute a Hotpot task or explicitly invokes this skill. Do not auto-start from a generic development request.
+The full workflow is defined at `$HOTPOT_EXECUTE_PROMPT` (Codex session hooks export this env var). Read that file first and follow the workflow end-to-end.
 
-## Purpose
+Codex has no `@path` expansion. When the shared body references `@.hotpot/prompts/<name>.md`, substitute the matching env var and use `Read`:
 
-Read the active task file, execute the implementation plan, run review, and route actionable findings back into fix rounds until review passes or the loop limit is reached.
+- `@.hotpot/prompts/tdd-protocol.md` → `$HOTPOT_TDD_PROTOCOL_PROMPT`
+- `@.hotpot/prompts/record-issue-candidate.md` → `$HOTPOT_RECORD_ISSUE_CANDIDATE_PROMPT`
+- `@.hotpot/prompts/summarize-issue-candidates.md` → `$HOTPOT_SUMMARIZE_ISSUE_CANDIDATES_PROMPT`
+- `@.hotpot/prompts/get-issue.md` → resolve as `$ROOT_DIR/.hotpot/prompts/get-issue.md` and use `Read`
 
-## Behavior
-
-- Resolve the active task file with `hotpot task active --path`.
-- Read the full task file before making changes.
-- Verify the task has `## Task`, `## Plan`, `## Execution Instructions`, checkbox steps, and validation commands.
-- Use the registered `hotpot-execution` and `hotpot-review` agents when available.
-- Keep the review phase read-only.
-- If the platform cannot spawn subagents, fall back to a strictly separated execution phase and read-only review phase in the same session.
-- Do not create new tasks from this skill.
-
-## Required Flow
-
-1. Resolve the active task file path.
-2. Read the full task file.
-3. Run the execution phase.
-4. Collect diff and changed files.
-5. Run the review phase.
-6. Fix actionable findings only, up to two rounds.
-7. Report final status for human confirmation.
-
-## Constraints
-
-- Review must remain read-only.
-- Do not expand scope beyond the task file.
-- Preserve non-goals and validation requirements.
-- Stop and report blockers if repository reality differs from the task handoff.
+Platform note: when the shared body refers to "the registered Hotpot execution agent" or "the registered Hotpot review agent", spawn the corresponding custom agent from `.codex/agents/hotpot-execution.toml` or `.codex/agents/hotpot-review.toml`. Codex supports subagents natively, so the review phase runs in a separate read-only context.

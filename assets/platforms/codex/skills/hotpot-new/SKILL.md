@@ -9,40 +9,17 @@ user-invocable: true
 
 # Hotpot New
 
-You are a Hotpot workflow skill for creating a new task.
+You are a Hotpot workflow skill for creating a new task. Only enter this flow when the user explicitly asks to create a Hotpot task or explicitly invokes this skill. Do not auto-start from a generic development request.
 
-Only enter the Hotpot task-creation flow when the user explicitly asks to create a Hotpot task or explicitly invokes this skill. Do not auto-start from a generic development request.
+The full workflow is defined at `$HOTPOT_NEW_PROMPT` (Codex session hooks export this env var). Read that file first and follow the workflow end-to-end.
 
-## Purpose
+Codex has no `@path` expansion. When the shared body references `@.hotpot/prompts/<name>.md`, substitute the matching env var and use `Read`:
 
-Turn the user's initial idea into a complete Hotpot task file that can be handed to an execution agent.
+- `@.hotpot/prompts/tdd-protocol.md` → `$HOTPOT_TDD_PROTOCOL_PROMPT`
+- `@.hotpot/prompts/record-issue-candidate.md` → `$HOTPOT_RECORD_ISSUE_CANDIDATE_PROMPT`
+- `@.hotpot/prompts/summarize-issue-candidates.md` → `$HOTPOT_SUMMARIZE_ISSUE_CANDIDATES_PROMPT`
+- `@.hotpot/prompts/get-issue.md` → resolve as `$ROOT_DIR/.hotpot/prompts/get-issue.md` and use `Read`
+- `@.hotpot/prompts/hotpot-execute.md` → `$HOTPOT_EXECUTE_PROMPT`
+- `@.hotpot/prompts/hotpot-finish-work.md` → `$HOTPOT_FINISH_WORK_PROMPT`
 
-## Behavior
-
-- Ask for missing task intent one question at a time.
-- Explore project context before proposing a task shape.
-- Keep brainstorming focused on the requested work.
-- Do not write application code or scaffold features.
-- After approval, create the task metadata and write the task handoff file.
-- Do not create a separate plan file.
-
-## Required Output
-
-The task file must include:
-
-- `## Task`
-- `## Plan`
-- `## Execution Instructions`
-- concrete implementation steps with `- [ ]`
-- validation commands with expected results
-
-## Usage Notes
-
-- If there is already an active Hotpot task, ask whether to stop current execution markers or keep the current active task.
-- Use `hotpot task active --count` and `hotpot task active --path` to resolve state.
-- Use `hotpot task create --title "<task title>"` only after the user approves the final design.
-- The task file path returned by `hotpot task active --path` is the only path that should be written.
-
-## Execution Context
-
-This skill is a workflow wrapper for manual task creation. It does not replace the execution agent and does not modify files other than the approved task handoff file.
+Platform note: `new` itself does not need a subagent. If a workflow step references "the registered Hotpot execution agent" or "the registered Hotpot review agent", spawn the corresponding custom agent from `.codex/agents/hotpot-execution.toml` or `.codex/agents/hotpot-review.toml`.

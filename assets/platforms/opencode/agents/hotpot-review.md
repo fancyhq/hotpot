@@ -49,6 +49,12 @@ The orchestrator must provide:
 - For every relevant Hotpot issue memory, decide whether its `Scene` matches the current change. If it matches, perform its `Review Check`.
 - Report only actionable findings.
 - Do not modify code or files.
+- **TDD mode**: if the orchestrator's prompt declares TDD mode (TDD Protocol inlined at the top, or task file's `## Plan > ### Mode` says `tdd: true`), perform the TDD Conformance Check in addition to the above checks:
+  - For every `#### Task N` in `## Plan > ### Implementation Tasks`, verify the execution report contains a `Task <N>:` evidence block with Red / Green / Refactor sub-fields.
+  - Missing block, missing sub-field, or out-of-order segments → `High`-severity finding "TDD evidence missing for Task <N>".
+  - Red `failure` is a compile error, dependency error, command-not-found, or unrelated environment failure → `High`-severity finding "Invalid Red for Task <N> — failure is not an assertion-level signal".
+  - Green diff contains code unrelated to the failing test (new features, broad refactors, removed unrelated code) → `Medium`-severity finding "Green scope bloat for Task <N>".
+  - Refactor block has neither a concrete action nor the literal phrase `no refactor needed` → `Medium`-severity finding "Refactor decision missing for Task <N>".
 
 ## Output Format
 
@@ -64,4 +70,10 @@ If there are no findings, output:
 ```text
 No findings.
 Residual risks or testing gaps: <brief note>
+```
+
+When TDD mode is on AND there are no findings AND every Implementation Task has a valid evidence block, append one extra line after the `No findings.` line:
+
+```text
+TDD conformance: passed.
 ```

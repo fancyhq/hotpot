@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cargo run -- hook claude pre-tool-use",
+            "command": "hotpot hook claude pre-tool-use",
             "timeout": 5,
             "statusMessage": "Preparing Hotpot shell context"
           }
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cargo run -- hook claude subagent-start",
+            "command": "hotpot hook claude subagent-start",
             "timeout": 5,
             "statusMessage": "Preparing Hotpot review memory"
           }

@@ -45,14 +45,20 @@ pub enum CodexHookCommand {
     SessionStart,
 }
 
-/// Arguments for the `hotpot hook bootstrap` command.
+/// Bootstrap the temporary Hotpot runtime context for the current hook.
+///
+/// `hotpot hook bootstrap` 的 CLI 参数：为当前 hook 准备 Hotpot 运行时上下文。
 #[derive(Args, Debug)]
 pub struct BootstrapArgs {
     /// Output format for the bootstrap context.
+    ///
+    /// bootstrap 上下文的输出格式。
     #[arg(long, value_enum, default_value = "shell")]
     format: BootstrapFormat,
 
     /// Explicit project root override.
+    ///
+    /// 显式指定项目根目录，覆盖自动解析。
     #[arg(long)]
     root_dir: Option<PathBuf>,
 }
@@ -186,6 +192,22 @@ fn print_shell_exports(context: &Context) {
         "export HOTPOT_SUMMARIZE_ISSUE_CANDIDATES_PROMPT='{}'",
         shell_quote(&context.summarize_issue_candidates_prompt)
     );
+    println!(
+        "export HOTPOT_TDD_PROTOCOL_PROMPT='{}'",
+        shell_quote(&context.tdd_protocol_prompt)
+    );
+    println!(
+        "export HOTPOT_NEW_PROMPT='{}'",
+        shell_quote(&context.new_prompt)
+    );
+    println!(
+        "export HOTPOT_EXECUTE_PROMPT='{}'",
+        shell_quote(&context.execute_prompt)
+    );
+    println!(
+        "export HOTPOT_FINISH_WORK_PROMPT='{}'",
+        shell_quote(&context.finish_work_prompt)
+    );
 }
 
 /// Prints the hook context as JSON.
@@ -256,6 +278,16 @@ fn context_lines(context: &Context) -> Vec<String> {
             "- HOTPOT_SUMMARIZE_ISSUE_CANDIDATES_PROMPT: {}",
             context.summarize_issue_candidates_prompt
         ),
+        format!(
+            "- HOTPOT_TDD_PROTOCOL_PROMPT: {}",
+            context.tdd_protocol_prompt
+        ),
+        format!("- HOTPOT_NEW_PROMPT: {}", context.new_prompt),
+        format!("- HOTPOT_EXECUTE_PROMPT: {}", context.execute_prompt),
+        format!(
+            "- HOTPOT_FINISH_WORK_PROMPT: {}",
+            context.finish_work_prompt
+        ),
     ]
 }
 
@@ -276,6 +308,13 @@ fn shell_export_assignments(context: &Context) -> String {
             "HOTPOT_SUMMARIZE_ISSUE_CANDIDATES_PROMPT",
             &context.summarize_issue_candidates_prompt,
         ),
+        (
+            "HOTPOT_TDD_PROTOCOL_PROMPT",
+            &context.tdd_protocol_prompt,
+        ),
+        ("HOTPOT_NEW_PROMPT", &context.new_prompt),
+        ("HOTPOT_EXECUTE_PROMPT", &context.execute_prompt),
+        ("HOTPOT_FINISH_WORK_PROMPT", &context.finish_work_prompt),
     ]
     .into_iter()
     .map(|(key, value)| format!("{key}={}", serde_json::to_string(value).unwrap_or_default()))

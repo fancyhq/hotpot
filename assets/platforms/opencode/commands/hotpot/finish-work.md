@@ -1,37 +1,14 @@
 ---
-description: Finish task and summarize review memory candidates
+description: Finish the active Hotpot task, promote review memory, and optionally commit
+agent: build
 ---
 
-You are finishing the current work session.
+You are running the Hotpot finish-work workflow. The user-facing invocation is `/hotpot:finish-work`.
 
-This command currently focuses on review-memory candidate handling. Task status updates are intentionally left as a future integration point because task lifecycle handling is not fully prepared yet.
+The full workflow is defined at:
 
-## Required Steps
+@.hotpot/prompts/hotpot-finish-work.md
 
-1. Review the current work state briefly.
-2. Read temporary issue candidates using the `read_issue_candidates` tool.
-3. If there are no candidates, say that no review-memory candidates were found.
-4. If candidates exist, summarize them using the rules in `@prompts/summarize-issue-candidates.md`.
-5. Produce a concise proposal showing:
-   - promoted issues that should be appended to `.hotpot/issues.jsonl`
-   - candidates that should be discarded
-   - candidates that should be merged
-6. Ask the user to confirm before writing anything to `.hotpot/issues.jsonl`.
-7. Do not call `clear_issue_candidates` until promoted items are written or the user explicitly chooses to discard the candidates.
+Follow that workflow end-to-end. OpenCode expands `@path` tokens recursively, so the nested `@.hotpot/prompts/summarize-issue-candidates.md`, `@.hotpot/prompts/get-issue.md`, and `@.hotpot/prompts/hotpot-execute.md` references inside the shared body will resolve at read time.
 
-## Constraints
-
-- Do not directly append to `.hotpot/issues.jsonl` without user confirmation.
-- Do not clear `.hotpot/workspaces/{username}/issue-candidates.jsonl` without user confirmation.
-- Do not include full diffs in promoted issues.
-- Do not promote unverified, one-off, or non-actionable candidates.
-- If task status handling is needed, report that this command has not integrated task status updates yet.
-
-## Future Task-State Integration Placeholder
-
-When task lifecycle support is ready, this command should also:
-
-1. Check whether the current task is complete.
-2. Confirm tests or validation commands were run.
-3. Mark the task as complete or ask the user what remains.
-4. Then run the review-memory candidate flow above.
+Platform note: when the shared body's "Offer to Resume Next Task" step needs to invoke the Hotpot execution agent, invoke the registered subagent `@hotpot-execution` from `.opencode/agents/`.

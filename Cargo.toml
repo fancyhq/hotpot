@@ -12,7 +12,7 @@ indoc = "2.0.7"
 nanoid = "0.5.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.149", features = ["preserve_order"] }
-toml_edit = "0.22"
+toml_edit = "0.25.11+spec-1.1.0"
 chrono = { version = "0.4.44", default-features = false, features = [
     "clock",
     "serde",
@@ -24,6 +24,10 @@ tiny_http = "0.12.0"
 # Cross-process advisory locking; protects concurrent writes to overview /
 # issues / issue-candidates JSONL files. See src/lock.rs.
 fs2 = "0.4"
+
+
+[target.'cfg(windows)'.dependencies]
+junction = "2.0.0"
 
 # 发布构建以「最小体积 + 完整功能」为目标。
 # - opt-level = "z":  以体积为优先（比 "s" 更激进，对本项目 IO/字符串重的代码

@@ -5,6 +5,7 @@ mod lock;
 mod paths;
 mod server;
 mod task;
+mod vuepress;
 mod worktree;
 
 use clap::Parser;

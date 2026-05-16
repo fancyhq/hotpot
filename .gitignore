@@ -19,3 +19,5 @@ PLANS.md
 # Advisory lock sidecars managed by src/lock.rs; never commit.
 /.hotpot/**/*.lock
 # hotpot:end
+
+/.hotpot-hub/

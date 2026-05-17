@@ -28,20 +28,31 @@ use super::Asset;
 /// VuePress hub project template, deployed under `.hotpot-hub/` only
 /// when VuePress is enabled. Mirrors `assets/vuepress/` byte-for-byte.
 ///
-/// The four `.vuepress/` files (`config.js` / `client.js` / `sidebar.js`
-/// / `components/TaskIndex.vue`) are tightly coupled — `config.js`
-/// invokes the `scanWorkspaces` / `generateSidebar` exports from
-/// `sidebar.js` and injects `__HOTPOT_TASK_INDEX__` as a Vite compile-
-/// time constant, which `TaskIndex.vue` (registered globally by
-/// `client.js`) reads on render. Editing any one of them in isolation
-/// breaks the home-page index. All four are `Asset::owned` so
-/// `hotpot vuepress install --force` restores the bundled copies.
+/// Five `.vuepress/` files ship today: four tightly-coupled runtime
+/// files (`config.js` / `client.js` / `sidebar.js` /
+/// `components/TaskIndex.vue`) plus the independent
+/// `styles/index.scss` decorative layer. The four runtime files
+/// cooperate — `config.js` invokes the `scanWorkspaces` /
+/// `generateSidebar` exports from `sidebar.js` and injects
+/// `__HOTPOT_TASK_INDEX__` as a Vite compile-time constant, which
+/// `TaskIndex.vue` (registered globally by `client.js`) reads on
+/// render; editing any one of them in isolation breaks the home-page
+/// index. `styles/index.scss` is loaded automatically by
+/// `@vuepress/theme-default` and can be edited or deleted freely
+/// without breaking the home-page TaskIndex injection chain. All five
+/// are `Asset::owned` so `hotpot vuepress install --force` restores
+/// the bundled copies.
 ///
 /// VuePress 模板项目，仅启用 VuePress 时部署到 `.hotpot-hub/`，与
-/// `assets/vuepress/` 内容逐字节对应。`.vuepress/` 下四个文件相互耦合
-/// （`config.js` 调 `sidebar.js` 的 `scanWorkspaces` / `generateSidebar`、
-/// 通过 Vite define 注入 `__HOTPOT_TASK_INDEX__` 给 `client.js` 注册的
-/// `TaskIndex.vue` 在渲染时读取），单独改其一会破坏首页索引。统一
+/// `assets/vuepress/` 内容逐字节对应。`.vuepress/` 下共五份文件：
+/// 四份相互耦合的运行时文件（`config.js` / `client.js` / `sidebar.js`
+/// / `components/TaskIndex.vue`）加一份独立的
+/// `styles/index.scss` 装饰层。四份运行时文件协作运行——`config.js`
+/// 调 `sidebar.js` 的 `scanWorkspaces` / `generateSidebar`、通过 Vite
+/// define 注入 `__HOTPOT_TASK_INDEX__` 给 `client.js` 注册的
+/// `TaskIndex.vue` 在渲染时读取，单独改其一会破坏首页索引；
+/// `styles/index.scss` 由 `@vuepress/theme-default` 自动加载，是纯装饰
+/// 层，可单独编辑或删除而不影响首页 TaskIndex 注入链。五份资产统一
 /// `Asset::owned`，`hotpot vuepress install --force` 可一键还原。
 pub(crate) const VUEPRESS_HUB_ASSETS: &[Asset] = &[
     Asset::owned(
@@ -71,5 +82,9 @@ pub(crate) const VUEPRESS_HUB_ASSETS: &[Asset] = &[
     Asset::owned(
         ".hotpot-hub/docs/.vuepress/components/TaskIndex.vue",
         include_str!("../../assets/vuepress/docs/.vuepress/components/TaskIndex.vue"),
+    ),
+    Asset::owned(
+        ".hotpot-hub/docs/.vuepress/styles/index.scss",
+        include_str!("../../assets/vuepress/docs/.vuepress/styles/index.scss"),
     ),
 ];

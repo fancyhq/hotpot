@@ -11,6 +11,17 @@
             "statusMessage": "Preparing Hotpot shell context"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hotpot hook claude pre-tool-use",
+            "timeout": 5,
+            "statusMessage": "Preparing Hotpot shell context"
+          }
+        ]
       }
     ],
     "SubagentStart": [
@@ -24,6 +35,17 @@
             "statusMessage": "Preparing Hotpot review memory"
           }
         ]
+      },
+      {
+        "matcher": "hotpot-execution|hotpot-review",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hotpot hook claude subagent-start",
+            "timeout": 5,
+            "statusMessage": "Preparing Hotpot review memory"
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -32,7 +54,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cargo run -- hook claude user-prompt-submit",
+            "command": "hotpot hook claude user-prompt-submit",
             "timeout": 5,
             "statusMessage": "Reasserting Hotpot output language"
           }
@@ -45,7 +67,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cargo run -- hook claude session-end",
+            "command": "hotpot hook claude session-end",
             "timeout": 5,
             "statusMessage": "Releasing Hotpot VuePress server"
           }

@@ -214,7 +214,7 @@ Common events include:
 - `WorktreeRemove`
 - `PreCompact`
 - `PostCompact`
-- `SessionEnd`
+- `SessionEnd` — Hotpot wires this to `hotpot hook claude session-end`, which runs `vuepress stop_if_running` so a `pnpm docs:dev` started during `/hotpot:new` is released even when the user closes the session without proceeding to `/hotpot:execute`. See **VuePress Integration** in `docs/ARCH.md`.
 
 Matcher notes:
 

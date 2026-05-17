@@ -192,7 +192,7 @@ export default function (pi: ExtensionAPI) {
 Important event families:
 
 - Resource discovery: `resources_discover`.
-- Session lifecycle: `session_start`, `session_shutdown`, `session_before_switch`, `session_before_fork`, `session_before_compact`, `session_compact`, `session_before_tree`, `session_tree`.
+- Session lifecycle: `session_start`, `session_shutdown` (Hotpot uses this to run `hotpot vuepress stop --if-running` so any VuePress dev server started during `/hotpot:new` is released on session close — see **VuePress Integration** in `docs/ARCH.md`), `session_before_switch`, `session_before_fork`, `session_before_compact`, `session_compact`, `session_before_tree`, `session_tree`.
 - Agent lifecycle: `before_agent_start`, `agent_start`, `agent_end`, `turn_start`, `turn_end`.
 - Message lifecycle: `message_start`, `message_update`, `message_end`.
 - Provider lifecycle: `context`, `before_provider_request`, `after_provider_response`.

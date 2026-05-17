@@ -38,6 +38,19 @@
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hotpot hook claude session-end",
+            "timeout": 5,
+            "statusMessage": "Releasing Hotpot VuePress server"
+          }
+        ]
+      }
     ]
   }
 }

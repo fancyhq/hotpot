@@ -19,6 +19,13 @@ type HotpotContext = {
   HOTPOT_NEW_PROMPT: string;
   HOTPOT_EXECUTE_PROMPT: string;
   HOTPOT_FINISH_WORK_PROMPT: string;
+  // VuePress trio. `HOTPOT_VUEPRESS_ENABLED` is always present
+  // (`"true"` / `"false"`); the other two are populated only when
+  // enabled and omitted from the bootstrap JSON when disabled.
+  // VuePress 三件套：ENABLED 总是有；PORT/URL 仅启用时存在。
+  HOTPOT_VUEPRESS_ENABLED?: string;
+  HOTPOT_VUEPRESS_PORT?: string;
+  HOTPOT_VUEPRESS_URL?: string;
 };
 
 type IssueCandidate = {
@@ -139,6 +146,27 @@ export default function hotpotExtension(pi: ExtensionAPI) {
   pi.on("user_bash", async (_event, ctx) => {
     const hotpot = await ensureContext(ctx.cwd);
     ctx.ui.notify(`Hotpot shell context prepared for ${hotpot.ROOT_DIR}`, "info");
+  });
+
+  // VuePress 服务清理（防护第 2 层）：Pi session 关闭时调
+  // `hotpot vuepress stop --if-running` 释放可能在跑的 dev server。
+  // stop --if-running 是幂等的——未启用 VuePress、没在跑、或已被
+  // /hotpot:execute pre-flight stop 清理过，都安全返回成功。
+  //
+  // VuePress server cleanup (defense layer 2). Idempotent — safe to
+  // call when VuePress is disabled, not running, or already released
+  // by /hotpot:execute pre-flight stop.
+  pi.on("session_shutdown", async (_event, ctx) => {
+    try {
+      await execFileAsync(
+        "hotpot",
+        ["vuepress", "stop", "--if-running"],
+        { cwd: ctx.cwd },
+      );
+    } catch (_err) {
+      // 清理失败不阻塞 session 关闭流程；保持静默。
+      // Cleanup failure must not block session teardown.
+    }
   });
 
   pi.registerTool({

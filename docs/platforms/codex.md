@@ -190,6 +190,8 @@ Documented events:
 - `UserPromptSubmit`
 - `Stop`
 
+**Codex does NOT expose a session-close event** in the documented clinic. `Stop` fires after every assistant turn, which is the wrong semantics for one-shot resource cleanup (it would tear down state mid-conversation). Consequence: Hotpot's VuePress server can't be released via a Codex hook the way it is on Claude Code (`SessionEnd`), OpenCode (`session.deleted`), and Pi (`session_shutdown`). Codex users rely instead on (1) the `/hotpot:execute` pre-flight `hotpot vuepress stop --if-running` for the normal path, and (2) the `--ttl 1800` lazy-expiry in `vuepress start` as a final safety net for the close-without-execute path. See **VuePress Integration** in `docs/ARCH.md`.
+
 Matcher notes:
 
 - `*`, empty, or omitted matcher means match all.

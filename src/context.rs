@@ -16,9 +16,15 @@ use crate::paths;
 
 /// 已解析的 Hotpot 运行时上下文，供 hook 与业务命令共享。
 ///
-/// 十个 `#[serde(rename = "...")]` 字段名是公共契约：OpenCode 的
+/// 全部 `#[serde(rename = "...")]` 字段名是公共契约：OpenCode 的
 /// `bash-before.ts` 与 Pi 的 `extensions/hotpot/index.ts` 都按这些大写
 /// 下划线键名直接读取 JSON 输出，**字面量不能改动**。
+///
+/// VuePress 三字段（`HOTPOT_VUEPRESS_ENABLED` / `HOTPOT_VUEPRESS_PORT` /
+/// `HOTPOT_VUEPRESS_URL`）受 `.hotpot/config.toml::[vuepress] enabled` 门
+/// 控：禁用时 `HOTPOT_VUEPRESS_ENABLED` 始终输出 `"false"`，另两个空
+/// 串通过 `skip_serializing_if` 从 JSON 中省略，AI 看到 `false` 即走未
+/// 启用分支。
 #[derive(Debug, serde::Serialize)]
 pub struct Context {
     /// 绝对项目根目录。
@@ -84,6 +90,39 @@ pub struct Context {
     /// Codex/Pi 通过该环境变量定位文件后 `Read` 加载。
     #[serde(rename = "HOTPOT_FINISH_WORK_PROMPT")]
     pub finish_work_prompt: String,
+
+    /// VuePress 启用开关，作为 AI 走收尾分支的门控。
+    ///
+    /// Always serialized (`"true"` or `"false"`) so the prompt env-gate in
+    /// `hotpot-new.md` has a deterministic value to test. Pulled from
+    /// [`resolve_vuepress_enabled`]; never empty.
+    ///
+    /// 始终输出 `"true"` 或 `"false"`，让 `hotpot-new.md` 的 env-gate
+    /// 块有确定值可判。
+    #[serde(rename = "HOTPOT_VUEPRESS_ENABLED")]
+    pub vuepress_enabled: String,
+
+    /// VuePress dev server 端口字符串，仅启用态填充。
+    ///
+    /// Empty string when disabled (skipped from JSON via
+    /// `skip_serializing_if`), so consumers reading the JSON cannot
+    /// accidentally treat a stale port as live state.
+    ///
+    /// 禁用态为空串，通过 `skip_serializing_if` 从 JSON 中省略，避免
+    /// 下游误把陈旧端口当成活动状态。
+    #[serde(rename = "HOTPOT_VUEPRESS_PORT", skip_serializing_if = "String::is_empty")]
+    pub vuepress_port: String,
+
+    /// VuePress dev server 根 URL，仅启用态填充。
+    ///
+    /// Pre-formatted `http://localhost:<port>` so the brainstorming
+    /// closing flow can hand the URL straight to the user without
+    /// stringly recomputing it.
+    ///
+    /// 已预先拼成 `http://localhost:<port>`，brainstorming 收尾流程
+    /// 直接展示给用户即可，无需重复计算。
+    #[serde(rename = "HOTPOT_VUEPRESS_URL", skip_serializing_if = "String::is_empty")]
+    pub vuepress_url: String,
 }
 
 impl Context {
@@ -105,7 +144,7 @@ impl Context {
             .and_then(Value::as_str)
             .map(PathBuf::from);
         let root_dir = canonicalize_or_cwd(payload_cwd)?;
-        build_context(root_dir.display().to_string())
+        build_context(path_to_agent_string(&root_dir))
     }
 
     /// 显式创建临时 issue 候选 JSONL 文件（含其父目录）。
@@ -155,7 +194,7 @@ pub fn resolve_root_dir(root_override: Option<PathBuf>) -> Result<String> {
     let explicit = root_override.or_else(|| env::var("ROOT_DIR").ok().map(PathBuf::from));
     let candidate = explicit.or_else(main_repo_root_if_in_worktree);
     let resolved = canonicalize_or_cwd(candidate)?;
-    Ok(resolved.display().to_string())
+    Ok(path_to_agent_string(&resolved))
 }
 
 /// Returns the main-repo toplevel when the current cwd is inside a git
@@ -250,7 +289,12 @@ fn main_repo_root_for(start: &std::path::Path) -> Option<PathBuf> {
     // `.git/worktrees/<id>/..`，结果错误。这里先 canonicalize 再取
     // parent；canonicalize 失败时返回 `None`，让上层退回 cwd，避免落
     // 一个错误 root。
-    let common_dir = common_dir_raw.canonicalize().ok()?;
+    // 同样改用 `dunce::canonicalize`：消解 `..` 段的同时避免 Windows 上
+    // 给主仓 toplevel 加 `\\?\` verbatim 前缀。
+    // Use `dunce::canonicalize` here too: it resolves `..` segments while
+    // keeping the resulting main-repo toplevel free of the Windows
+    // `\\?\` verbatim prefix.
+    let common_dir = dunce::canonicalize(&common_dir_raw).ok()?;
     common_dir.parent().map(PathBuf::from)
 }
 
@@ -406,41 +450,250 @@ impl LanguageSource {
     }
 }
 
+/// VuePress 启用状态的默认值（禁用）。
+///
+/// Default VuePress enabled state (disabled). Centralized so resolver
+/// fallback and serde defaults agree on the same literal.
+pub const VUEPRESS_ENABLED_DEFAULT: bool = false;
+
+/// VuePress dev server 默认端口。
+///
+/// Default port for `pnpm docs:dev`. Centralized so resolver fallback,
+/// config-template comments, and CLI `--port` defaults agree.
+pub const VUEPRESS_PORT_DEFAULT: u16 = 8080;
+
+/// 解析 VuePress 启用状态。
+///
+/// Resolves whether VuePress integration is currently enabled. Chain:
+/// 1. env `HOTPOT_VUEPRESS_ENABLED` (`"true"` / `"false"`, case-insensitive)
+/// 2. `<root_dir>/.hotpot/config.toml` `[vuepress] enabled = bool`
+/// 3. literal `false` (disabled)
+///
+/// `enabled` is part of an *atomic* state — flipping it without running
+/// `hotpot vuepress install` / `uninstall` will desync the `.hotpot-hub/`
+/// directory and opt-in prompts. The resolver itself does not enforce
+/// this; CLI commands cross-check on use.
+///
+/// 顺序：env `HOTPOT_VUEPRESS_ENABLED`（不区分大小写的 `"true"/"false"`）
+/// → `.hotpot/config.toml::[vuepress] enabled` → 字面量 `false`。任何
+/// 解析失败一律静默回退；该函数被 hook 每轮调用，必须无声。
+pub fn resolve_vuepress_enabled(root_dir: &str) -> bool {
+    resolve_vuepress_enabled_with_source(root_dir).0
+}
+
+/// 解析 VuePress 启用状态并返回来源标签。
+///
+/// 与 [`resolve_vuepress_enabled`] 顺序一致；额外报告命中链节，便于
+/// `hotpot update` / 健康自检向用户说明 `enabled` 是从 env、config 还是
+/// 默认值得来的。
+pub fn resolve_vuepress_enabled_with_source(root_dir: &str) -> (bool, VuepressEnabledSource) {
+    if let Some(enabled) = parse_bool(env::var("HOTPOT_VUEPRESS_ENABLED").ok()) {
+        return (enabled, VuepressEnabledSource::Env);
+    }
+
+    if let Some(enabled) = read_vuepress_enabled_from_config_toml(root_dir) {
+        return (enabled, VuepressEnabledSource::ConfigToml);
+    }
+
+    (VUEPRESS_ENABLED_DEFAULT, VuepressEnabledSource::Default)
+}
+
+/// 从 `<root_dir>/.hotpot/config.toml` 的 `[vuepress] enabled` 读取布尔值。
+///
+/// Returns `None` for any failure (missing file, IO error, malformed TOML,
+/// missing `[vuepress]` table, missing `enabled` key, non-bool value).
+///
+/// 任何失败均返回 `None`，由调用方继续走链式回退。
+fn read_vuepress_enabled_from_config_toml(root_dir: &str) -> Option<bool> {
+    let config_path = PathBuf::from(root_dir).join(".hotpot").join("config.toml");
+    let raw = fs::read_to_string(&config_path).ok()?;
+    let doc = raw.parse::<toml_edit::DocumentMut>().ok()?;
+    let table = doc.get("vuepress")?.as_table()?;
+    let item = table.get("enabled")?;
+    item.as_bool()
+}
+
+/// 命中的 VuePress enabled 来源标签（仅用于上层报告）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VuepressEnabledSource {
+    /// 命中 `HOTPOT_VUEPRESS_ENABLED` 环境变量。
+    Env,
+    /// 命中 `<root>/.hotpot/config.toml::[vuepress] enabled`。
+    ConfigToml,
+    /// 链路全部 miss，回退到字面量 `false`。
+    Default,
+}
+
+impl VuepressEnabledSource {
+    /// JSON / 摘要输出用的稳定字符串标签。
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            VuepressEnabledSource::Env => "env",
+            VuepressEnabledSource::ConfigToml => "config_toml",
+            VuepressEnabledSource::Default => "default",
+        }
+    }
+}
+
+/// 解析 VuePress dev server 端口。
+///
+/// Resolves the VuePress dev server port. Chain:
+/// 1. env `HOTPOT_VUEPRESS_PORT` (numeric in `u16` range)
+/// 2. `<root_dir>/.hotpot/config.toml::[vuepress] port = <int>`
+/// 3. literal `8080`
+///
+/// Out-of-range or non-numeric values at any level fall through to the
+/// next link — never `bail!`, since this runs on every hook turn.
+///
+/// 顺序：env `HOTPOT_VUEPRESS_PORT`（必须能解析为 u16）→
+/// `.hotpot/config.toml::[vuepress] port` → 字面量 `8080`。任何失败
+/// 静默回退。
+pub fn resolve_vuepress_port(root_dir: &str) -> u16 {
+    resolve_vuepress_port_with_source(root_dir).0
+}
+
+/// 解析 VuePress 端口并返回来源标签。
+pub fn resolve_vuepress_port_with_source(root_dir: &str) -> (u16, VuepressPortSource) {
+    if let Some(port) = env::var("HOTPOT_VUEPRESS_PORT")
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u16>().ok())
+    {
+        return (port, VuepressPortSource::Env);
+    }
+
+    if let Some(port) = read_vuepress_port_from_config_toml(root_dir) {
+        return (port, VuepressPortSource::ConfigToml);
+    }
+
+    (VUEPRESS_PORT_DEFAULT, VuepressPortSource::Default)
+}
+
+/// 从 `<root_dir>/.hotpot/config.toml` 的 `[vuepress] port` 读取端口。
+///
+/// Reads `[vuepress] port` as an integer in `u16` range. Returns `None`
+/// on missing / IO / malformed / out-of-range value.
+///
+/// `[vuepress] port` 必须是 0..=65535 范围内的整数；越界或类型不匹配
+/// 都返回 `None`，由调用方继续走链式回退。
+fn read_vuepress_port_from_config_toml(root_dir: &str) -> Option<u16> {
+    let config_path = PathBuf::from(root_dir).join(".hotpot").join("config.toml");
+    let raw = fs::read_to_string(&config_path).ok()?;
+    let doc = raw.parse::<toml_edit::DocumentMut>().ok()?;
+    let table = doc.get("vuepress")?.as_table()?;
+    let item = table.get("port")?;
+    let value = item.as_integer()?;
+    u16::try_from(value).ok()
+}
+
+/// 命中的 VuePress port 来源标签（仅用于上层报告）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VuepressPortSource {
+    /// 命中 `HOTPOT_VUEPRESS_PORT` 环境变量。
+    Env,
+    /// 命中 `<root>/.hotpot/config.toml::[vuepress] port`。
+    ConfigToml,
+    /// 链路全部 miss，回退到字面量 `8080`。
+    Default,
+}
+
+impl VuepressPortSource {
+    /// JSON / 摘要输出用的稳定字符串标签。
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            VuepressPortSource::Env => "env",
+            VuepressPortSource::ConfigToml => "config_toml",
+            VuepressPortSource::Default => "default",
+        }
+    }
+}
+
+/// 把可选字符串解析为布尔值，容忍大小写与首尾空白。
+///
+/// Parses an optional string into a boolean, tolerating mixed case and
+/// surrounding whitespace. Used by VuePress env-var resolution where
+/// shell may emit `"True"` / `"FALSE"` etc.
+fn parse_bool(value: Option<String>) -> Option<bool> {
+    let raw = value?;
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    }
+}
+
+/// 把任意 `Path` 转成给 agent / env-var / prompt 消费的字符串：在所有平台
+/// 上把反斜杠统一替换为正斜杠，让 `Context` 输出的 path 字段始终是 POSIX
+/// 形式。Windows 自身的 fs API 完全接受正斜杠分隔符，因此这层规范化是单向、
+/// 零功能损失的；同时避免反斜杠在 markdown / URI / JSON 二次转义场景里被
+/// 误解（`\\?\` → `%3F` 只是最显眼的症状，反斜杠本身也会在下游 markdown
+/// 渲染、URI 拼接、JS 字符串展开里被吃掉或重新百分号编码）。
+///
+/// Normalizes any `Path` into the string form that gets fed to agents
+/// (env-vars, prompt arguments, JSON payloads). Always replaces `\\`
+/// with `/` so `Context`'s path fields are POSIX-shaped on every
+/// platform — Windows fs APIs accept forward slashes natively, so the
+/// conversion is lossless. The point is to keep backslashes out of
+/// markdown / URI / JSON contexts downstream, where they get eaten,
+/// double-escaped, or percent-encoded (the `\\?\` → `%3F` symptom is
+/// just the loudest member of this family).
+fn path_to_agent_string(path: &std::path::Path) -> String {
+    path.display().to_string().replace('\\', "/")
+}
+
 /// 把候选路径解析为绝对路径字符串：先选定 `candidate`，缺失则用 cwd 兜底，
 /// 最后尝试 `canonicalize`，不存在时返回原路径以保持向后兼容。
+///
+/// 使用 `dunce::canonicalize` 而非 `std::fs::canonicalize`：在 Windows 上
+/// 会在不必要时剥离 `\\?\` verbatim 前缀，避免该前缀进入 `ROOT_DIR` 等
+/// env-var、再被下游消费方（VuePress、浏览器、URI 拼接代码等）把 `?`
+/// 编码为 `%3F`，产生 `file://%3F\D:\...` 这种畸形路径。
+///
+/// Uses `dunce::canonicalize` instead of `std::fs::canonicalize`: on
+/// Windows it strips the `\\?\` verbatim prefix when not strictly
+/// required, so that prefix never leaks into `ROOT_DIR` and other agent
+/// env-vars where downstream consumers may URI-encode `?` into `%3F`
+/// and yield malformed `file://%3F\D:\...` paths.
 fn canonicalize_or_cwd(candidate: Option<PathBuf>) -> Result<PathBuf> {
     let path = match candidate {
         Some(path) => path,
         None => env::current_dir().context("failed to resolve current directory")?,
     };
-    Ok(path.canonicalize().unwrap_or(path))
+    Ok(dunce::canonicalize(&path).unwrap_or(path))
 }
 
 /// 由已解析的根目录构建完整 `Context`。
 fn build_context(root_dir: String) -> Result<Context> {
     let username = resolve_username(&root_dir)?;
     let language = resolve_language(&root_dir);
-    let issue_candidates_file = paths::issue_candidates_file_path(&root_dir, &username)
-        .display()
-        .to_string();
-    let record_issue_candidate_prompt = prompt_path(&root_dir, "record-issue-candidate.md")
-        .display()
-        .to_string();
-    let summarize_issue_candidates_prompt = prompt_path(&root_dir, "summarize-issue-candidates.md")
-        .display()
-        .to_string();
-    let tdd_protocol_prompt = prompt_path(&root_dir, "tdd-protocol.md")
-        .display()
-        .to_string();
-    let new_prompt = prompt_path(&root_dir, "hotpot-new.md")
-        .display()
-        .to_string();
-    let execute_prompt = prompt_path(&root_dir, "hotpot-execute.md")
-        .display()
-        .to_string();
-    let finish_work_prompt = prompt_path(&root_dir, "hotpot-finish-work.md")
-        .display()
-        .to_string();
+    let issue_candidates_file =
+        path_to_agent_string(&paths::issue_candidates_file_path(&root_dir, &username));
+    let record_issue_candidate_prompt =
+        path_to_agent_string(&prompt_path(&root_dir, "record-issue-candidate.md"));
+    let summarize_issue_candidates_prompt =
+        path_to_agent_string(&prompt_path(&root_dir, "summarize-issue-candidates.md"));
+    let tdd_protocol_prompt = path_to_agent_string(&prompt_path(&root_dir, "tdd-protocol.md"));
+    let new_prompt = path_to_agent_string(&prompt_path(&root_dir, "hotpot-new.md"));
+    let execute_prompt = path_to_agent_string(&prompt_path(&root_dir, "hotpot-execute.md"));
+    let finish_work_prompt = path_to_agent_string(&prompt_path(&root_dir, "hotpot-finish-work.md"));
+
+    // VuePress 三字段：enabled 始终输出（AI 据此走分支），port/url 仅启用
+    // 态填充——禁用时为空串以触发 `skip_serializing_if`，从 JSON 中省略，
+    // 防止下游把陈旧端口当成活动状态。
+    //
+    // VuePress trio: `enabled` is always serialized so the prompt env-gate
+    // has a deterministic value to test; `port`/`url` are populated only
+    // when enabled, otherwise left empty so `skip_serializing_if` drops
+    // them — preventing stale values from being treated as live.
+    let vuepress_enabled_bool = resolve_vuepress_enabled(&root_dir);
+    let vuepress_enabled = if vuepress_enabled_bool { "true" } else { "false" }.to_string();
+    let (vuepress_port, vuepress_url) = if vuepress_enabled_bool {
+        let port = resolve_vuepress_port(&root_dir);
+        (port.to_string(), format!("http://localhost:{port}"))
+    } else {
+        (String::new(), String::new())
+    };
 
     Ok(Context {
         root_dir,
@@ -453,6 +706,9 @@ fn build_context(root_dir: String) -> Result<Context> {
         new_prompt,
         execute_prompt,
         finish_work_prompt,
+        vuepress_enabled,
+        vuepress_port,
+        vuepress_url,
     })
 }
 
@@ -664,5 +920,127 @@ mod tests {
         let (lang, source) = resolve_language_with_source(&root.display().to_string());
         assert_eq!(lang, "English");
         assert_eq!(source, LanguageSource::Default);
+    }
+
+    /// SAFETY: caller holds `env_lock()`; env mutators are unsafe in 2024 edition.
+    unsafe fn clear_vuepress_env() {
+        unsafe {
+            env::remove_var("HOTPOT_VUEPRESS_ENABLED");
+            env::remove_var("HOTPOT_VUEPRESS_PORT");
+        }
+    }
+
+    #[test]
+    fn vuepress_enabled_from_env_override() {
+        let _guard = env_lock();
+        let root = unique_root("vp-enabled-env");
+        unsafe { env::set_var("HOTPOT_VUEPRESS_ENABLED", "true") };
+
+        let (enabled, source) = resolve_vuepress_enabled_with_source(&root.display().to_string());
+        assert!(enabled);
+        assert_eq!(source, VuepressEnabledSource::Env);
+
+        unsafe { clear_vuepress_env() };
+    }
+
+    #[test]
+    fn vuepress_enabled_from_config_toml() {
+        let _guard = env_lock();
+        unsafe { clear_vuepress_env() };
+        let root = unique_root("vp-enabled-config");
+        write_config(&root, "[vuepress]\nenabled = true\nport = 8080\n");
+
+        let (enabled, source) = resolve_vuepress_enabled_with_source(&root.display().to_string());
+        assert!(enabled);
+        assert_eq!(source, VuepressEnabledSource::ConfigToml);
+    }
+
+    #[test]
+    fn vuepress_enabled_defaults_to_false() {
+        let _guard = env_lock();
+        unsafe { clear_vuepress_env() };
+        let root = unique_root("vp-enabled-default");
+        // 既无 env 也无 config.toml，应回退到字面量 false。
+        let (enabled, source) = resolve_vuepress_enabled_with_source(&root.display().to_string());
+        assert!(!enabled);
+        assert_eq!(source, VuepressEnabledSource::Default);
+    }
+
+    #[test]
+    fn vuepress_enabled_env_case_insensitive() {
+        let _guard = env_lock();
+        let root = unique_root("vp-enabled-case");
+        unsafe { env::set_var("HOTPOT_VUEPRESS_ENABLED", "  TRUE  ") };
+
+        let (enabled, _source) = resolve_vuepress_enabled_with_source(&root.display().to_string());
+        assert!(enabled);
+
+        unsafe { clear_vuepress_env() };
+    }
+
+    #[test]
+    fn vuepress_enabled_garbage_env_falls_through() {
+        let _guard = env_lock();
+        let root = unique_root("vp-enabled-garbage");
+        // 模拟用户把 enabled 写成 "yes"——不在 {"true","false"} 集合内应当
+        // 当作 None，让链路落到 config.toml；这里 config.toml 也缺，最终为
+        // Default(false)。
+        write_config(&root, "# no vuepress table\n");
+        unsafe { env::set_var("HOTPOT_VUEPRESS_ENABLED", "yes") };
+
+        let (enabled, source) = resolve_vuepress_enabled_with_source(&root.display().to_string());
+        assert!(!enabled);
+        assert_eq!(source, VuepressEnabledSource::Default);
+
+        unsafe { clear_vuepress_env() };
+    }
+
+    #[test]
+    fn vuepress_port_from_env_override() {
+        let _guard = env_lock();
+        let root = unique_root("vp-port-env");
+        unsafe { env::set_var("HOTPOT_VUEPRESS_PORT", "9527") };
+
+        let (port, source) = resolve_vuepress_port_with_source(&root.display().to_string());
+        assert_eq!(port, 9527);
+        assert_eq!(source, VuepressPortSource::Env);
+
+        unsafe { clear_vuepress_env() };
+    }
+
+    #[test]
+    fn vuepress_port_from_config_toml() {
+        let _guard = env_lock();
+        unsafe { clear_vuepress_env() };
+        let root = unique_root("vp-port-config");
+        write_config(&root, "[vuepress]\nenabled = true\nport = 4321\n");
+
+        let (port, source) = resolve_vuepress_port_with_source(&root.display().to_string());
+        assert_eq!(port, 4321);
+        assert_eq!(source, VuepressPortSource::ConfigToml);
+    }
+
+    #[test]
+    fn vuepress_port_defaults_to_8080() {
+        let _guard = env_lock();
+        unsafe { clear_vuepress_env() };
+        let root = unique_root("vp-port-default");
+        let (port, source) = resolve_vuepress_port_with_source(&root.display().to_string());
+        assert_eq!(port, VUEPRESS_PORT_DEFAULT);
+        assert_eq!(source, VuepressPortSource::Default);
+    }
+
+    #[test]
+    fn vuepress_port_out_of_range_falls_through() {
+        let _guard = env_lock();
+        unsafe { clear_vuepress_env() };
+        let root = unique_root("vp-port-overflow");
+        // 70000 超出 u16 范围，应当被解析器拒绝并继续走链路；config.toml
+        // 也无该字段，最终落到 Default(8080)。
+        write_config(&root, "[vuepress]\nport = 70000\n");
+
+        let (port, source) = resolve_vuepress_port_with_source(&root.display().to_string());
+        assert_eq!(port, VUEPRESS_PORT_DEFAULT);
+        assert_eq!(source, VuepressPortSource::Default);
     }
 }

@@ -150,7 +150,7 @@ export const ExamplePlugin: Plugin = async ({ project, client, $, directory, wor
 Common event families:
 
 - Command events such as `command.executed`.
-- File, installation, LSP, message, permission, server, session, and todo events.
+- File, installation, LSP, message, permission, server, session, and todo events. Hotpot uses session-close events (`session.deleted` / `session.ended` / `session.shutdown` — matched defensively across OpenCode releases) to run `hotpot vuepress stop --if-running`, releasing any VuePress dev server started during `/hotpot:new`. See **VuePress Integration** in `docs/ARCH.md`.
 - Tool events such as `tool.execute.before` and `tool.execute.after`.
 - Shell environment injection through `shell.env`.
 - TUI events such as `tui.prompt.append`, `tui.command.execute`, and `tui.toast.show`.

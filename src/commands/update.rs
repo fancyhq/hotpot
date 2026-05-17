@@ -23,7 +23,7 @@
 //! 平台——只刷新已存在的目录，新平台仍需用户显式 `hotpot init --platform`。
 
 use std::{
-    env, fs,
+    env,
     path::{Path, PathBuf},
 };
 
@@ -32,24 +32,13 @@ use clap::Args;
 use serde::Serialize;
 
 use crate::{
-    commands::init::{self, InstallStats},
-    context::{UsernameSource, resolve_language_with_source, resolve_username_with_source},
-    paths,
+    assets::{self, InstallStats},
+    context::{
+        UsernameSource, resolve_language_with_source, resolve_username_with_source,
+        resolve_vuepress_enabled,
+    },
+    paths, vuepress, workspace,
 };
-
-/// 健康自检会校验的 prompt 文件名（应与 `init/mod.rs::SHARED_ASSETS` 保持一致）。
-///
-/// Prompt files the health check verifies (must stay in sync with
-/// `init/mod.rs::SHARED_ASSETS`).
-const REQUIRED_PROMPTS: &[&str] = &[
-    "get-issue.md",
-    "record-issue-candidate.md",
-    "summarize-issue-candidates.md",
-    "tdd-protocol.md",
-    "hotpot-new.md",
-    "hotpot-execute.md",
-    "hotpot-finish-work.md",
-];
 
 /// Refresh installed platforms, bootstrap the workspace, and run health checks.
 ///
@@ -126,6 +115,21 @@ pub struct UpdateReport {
     refreshed_platforms: Vec<String>,
     gitignore_updated: bool,
     prompts_updated: Vec<String>,
+    /// VuePress opt-in 状态：当前项目是否启用了 VuePress 集成
+    /// (`.hotpot/config.toml::[vuepress] enabled`)。
+    ///
+    /// Whether `[vuepress] enabled = true` is set for this project.
+    /// Reported so operators can confirm at a glance whether VuePress
+    /// is part of the current setup, alongside username / language.
+    vuepress_enabled: bool,
+    /// 本轮 update 刷新的 VuePress opt-in prompt 文件名（相对 `.hotpot/prompts/`）。
+    /// 仅在 `vuepress_enabled = true` 时可能非空。
+    ///
+    /// Names of VuePress opt-in prompts (relative to `.hotpot/prompts/`)
+    /// rewritten by this update run. Only ever non-empty when
+    /// `vuepress_enabled = true` and the bundled template differs from
+    /// the on-disk copy.
+    vuepress_prompts_updated: Vec<String>,
     warnings: Vec<Warning>,
 }
 
@@ -153,10 +157,12 @@ pub fn update(args: UpdateArgs) -> Result<()> {
 /// Runs the full update pipeline and returns a structured [`UpdateReport`].
 /// Pure data path so it can be unit-tested without stdout capture.
 pub(crate) fn build_report(args: UpdateArgs) -> Result<UpdateReport> {
-    let project_dir: PathBuf = args
-        .project_dir
-        .canonicalize()
-        .unwrap_or(args.project_dir.clone());
+    // 与 `hotpot init` 保持一致：用 `dunce::canonicalize` 规避 Windows
+    // 的 `\\?\` verbatim 前缀，避免污染后续写入 env-var 的派生路径。
+    // Mirror `hotpot init`: `dunce::canonicalize` strips the Windows
+    // `\\?\` verbatim prefix so derived env-var paths stay clean.
+    let project_dir: PathBuf =
+        dunce::canonicalize(&args.project_dir).unwrap_or_else(|_| args.project_dir.clone());
     let root_dir = project_dir.display().to_string();
 
     // ── 1. 解析 username（带来源） ───────────────────────────────────────
@@ -179,7 +185,7 @@ pub(crate) fn build_report(args: UpdateArgs) -> Result<UpdateReport> {
     let (language, language_source) = resolve_language_with_source(&root_dir);
 
     // ── 2. 平台探测 ────────────────────────────────────────────────────
-    let platforms = init::detect_installed_platforms(&project_dir);
+    let platforms = assets::detect_installed_platforms(&project_dir);
     if platforms.is_empty() {
         bail!(
             "no platform directories found under {}; run `hotpot init --platform <claude|opencode|codex|pi>` first to bootstrap a platform",
@@ -194,7 +200,7 @@ pub(crate) fn build_report(args: UpdateArgs) -> Result<UpdateReport> {
     let mut combined = InstallStats::default();
     let mut refreshed: Vec<String> = Vec::new();
     for platform in &platforms {
-        let stats = init::install_assets_for(
+        let stats = assets::install_for(
             &project_dir,
             *platform,
             /* force */ false,
@@ -215,20 +221,75 @@ pub(crate) fn build_report(args: UpdateArgs) -> Result<UpdateReport> {
         .filter_map(|p| p.strip_prefix(".hotpot/prompts/").map(str::to_string))
         .collect();
 
+    // ── 4b. VuePress opt-in 资产刷新 ────────────────────────────────────
+    // 启用 VuePress 的项目里，`vuepress.md` / `vuepress-style.md` 不在
+    // `SHARED_ASSETS` 内，平台刷新不会自动覆盖它们。手动跑 update 的协作
+    // 者通常期待"day-1 一键拉齐"——这里检测 `[vuepress] enabled` 并按需
+    // 重新部署 opt-in prompts（Hub 项目 `.hotpot-hub/` 不在此触动：那里
+    // 含 `node_modules` 等用户运行时产物，重装应是 explicit 的
+    // `hotpot vuepress install --force`，不该被 update 静默覆盖）。
+    //
+    // Refresh VuePress opt-in prompts when the project has VuePress
+    // enabled. Hub assets (`.hotpot-hub/`) are intentionally NOT
+    // refreshed here — they ship with `node_modules` etc. that should
+    // not be wiped silently; users explicitly run
+    // `hotpot vuepress install --force` for that.
+    let vuepress_enabled = resolve_vuepress_enabled(&root_dir);
+    let vuepress_prompts_updated: Vec<String> = if vuepress_enabled {
+        let stats = assets::install_vuepress_prompts(
+            &project_dir,
+            /* force */ false,
+            args.dry_run,
+            verbose_per_asset,
+        )
+        .context("failed to refresh VuePress opt-in prompts")?;
+        stats
+            .written
+            .iter()
+            .filter_map(|p| p.strip_prefix(".hotpot/prompts/").map(str::to_string))
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     // ── 5. 创建 workspace 骨架 ────────────────────────────────────────────
     let workspace_path = paths::workspace_dir(&root_dir, &username);
     let workspace_existed = workspace_path.is_dir();
     if !args.dry_run {
-        ensure_workspace_skeleton(&root_dir, &username)
+        workspace::ensure_workspace_skeleton(&root_dir, &username)
             .context("failed to bootstrap workspace skeleton")?;
     }
     let workspace_created = !workspace_existed;
+
+    // ── 5b. 启用 VuePress 时同步 docs 软链 ───────────────────────────────
+    // 必须放在 step 5 之后：sync 需要当前 user 的 `.hotpot/workspaces/<user>/
+    // tasks/` 已存在才能建链。在 `dry_run` 下跳过；hub 还没装好（用户启用了
+    // enabled 但 `.hotpot-hub/` 缺失）时 sync 会自然返 Err，这里 demote 为
+    // warning 不阻塞 update——后续 6bb 步的一致性自检会单独报"hub missing"
+    // 让用户跑 `vuepress install` 修复。
+    //
+    // Sync the docs symlinks once the workspace skeleton is in place.
+    // Must run AFTER step 5 because sync needs the current user's
+    // `tasks/` directory to exist before linking. Failures (e.g. hub
+    // not installed yet) are demoted to a stderr warning so update
+    // still completes; the consistency self-check below surfaces the
+    // real "hub missing" problem with a repair hint.
+    if vuepress_enabled && !args.dry_run {
+        if let Err(err) = vuepress::sync_tasks_links(&root_dir) {
+            eprintln!("Warning: failed to sync vuepress docs symlinks: {err}");
+        }
+    }
 
     // ── 6. 健康自检 ──────────────────────────────────────────────────────
     let mut warnings: Vec<Warning> = Vec::new();
 
     // 6a. Prompt 文件完整性（即便平台刷新顺利，本检验也是防御性兜底）。
-    for prompt in REQUIRED_PROMPTS {
+    //     Prompt 列表直接从 `assets::SHARED_ASSETS` 推导，避免本地维护一份重复
+    //     清单后随 catalog 漂移。
+    //     Prompt list is derived from `assets::SHARED_ASSETS` to keep this
+    //     check in sync with the catalog instead of maintaining a duplicate
+    //     list that drifts.
+    for prompt in assets::shared_prompts() {
         let path = PathBuf::from(&root_dir)
             .join(".hotpot")
             .join("prompts")
@@ -254,6 +315,28 @@ pub(crate) fn build_report(args: UpdateArgs) -> Result<UpdateReport> {
     //     6b. Platform-asset completeness is already self-healing via the
     //     refresh step above; an inconsistent state would have surfaced as
     //     a bail from `install_assets_for`. No extra check needed here.
+
+    // 6bb. VuePress 三者一致性：启用态下校验 config / hub / opt-in prompt
+    //      三件套是否齐全。enabled=false 时跳过——禁用是合法状态，不报警。
+    //      `verify_install_consistency` 已经实现该校验，转译它的错为 warning。
+    //
+    // 6bb. VuePress atomic-state sanity. Only runs when enabled — a
+    //      disabled project is legitimate state and must not warn.
+    //      Reuses `vuepress::verify_install_consistency` as the source
+    //      of truth for what "consistent" means; failures become
+    //      operator-visible warnings instead of errors.
+    if vuepress_enabled {
+        if let Err(err) = vuepress::verify_install_consistency(&root_dir) {
+            warnings.push(Warning {
+                code: "vuepress_inconsistent".to_string(),
+                message: format!("VuePress atomic state is out of sync: {err}"),
+                fix: format!(
+                    "hotpot vuepress uninstall && hotpot vuepress install --project-dir {}",
+                    project_dir.display()
+                ),
+            });
+        }
+    }
 
     // 6c. 默认 username 风险提示。
     if matches!(source, UsernameSource::Default) && !args.allow_default {
@@ -288,37 +371,10 @@ pub(crate) fn build_report(args: UpdateArgs) -> Result<UpdateReport> {
         refreshed_platforms: refreshed,
         gitignore_updated,
         prompts_updated,
+        vuepress_enabled,
+        vuepress_prompts_updated,
         warnings,
     })
-}
-
-/// 创建当前 username 的 workspace 骨架（含 `overview.jsonl`、`tasks/`、
-/// `issue-candidates.jsonl`）。所有步骤幂等：目录或空文件已存在则 skip。
-///
-/// Bootstraps the workspace skeleton for the given username (`overview.jsonl`,
-/// `tasks/`, `issue-candidates.jsonl`). Fully idempotent.
-fn ensure_workspace_skeleton(root_dir: &str, username: &str) -> Result<()> {
-    let ws = paths::workspace_dir(root_dir, username);
-    fs::create_dir_all(&ws)
-        .with_context(|| format!("failed to create {}", ws.display()))?;
-
-    let tasks = paths::task_dir_path(root_dir, username);
-    fs::create_dir_all(&tasks)
-        .with_context(|| format!("failed to create {}", tasks.display()))?;
-
-    let overview = paths::overview_file_path(root_dir, username);
-    if !overview.exists() {
-        fs::write(&overview, b"")
-            .with_context(|| format!("failed to create {}", overview.display()))?;
-    }
-
-    let candidates = paths::issue_candidates_file_path(root_dir, username);
-    if !candidates.exists() {
-        fs::write(&candidates, b"")
-            .with_context(|| format!("failed to create {}", candidates.display()))?;
-    }
-
-    Ok(())
 }
 
 /// `which hotpot` 的最小实现：扫描 `PATH` 找可执行文件，存在则返回路径。
@@ -398,6 +454,16 @@ fn render_human(report: &UpdateReport, dry_run: bool) {
     if report.gitignore_updated {
         println!(".gitignore: hotpot block synced");
     }
+    if report.vuepress_enabled {
+        if report.vuepress_prompts_updated.is_empty() {
+            println!("VuePress: enabled (opt-in prompts already up to date)");
+        } else {
+            println!(
+                "VuePress: enabled (refreshed: {})",
+                report.vuepress_prompts_updated.join(", ")
+            );
+        }
+    }
 
     if report.warnings.is_empty() {
         println!();
@@ -446,9 +512,9 @@ mod tests {
 
     /// 在 fixture 中预安装一个平台（默认 claude），让 `update` 有目标可刷新。
     fn install_claude_fixture(project_dir: &PathBuf) {
-        init::install_assets_for(
+        assets::install_for(
             project_dir,
-            init::InitPlatform::Claude,
+            assets::Platform::Claude,
             /* force */ false,
             /* dry_run */ false,
             /* verbose */ false,

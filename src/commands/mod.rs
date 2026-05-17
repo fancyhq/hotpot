@@ -4,6 +4,7 @@ pub mod issues;
 pub mod server;
 pub mod task;
 pub mod update;
+pub mod vuepress;
 pub mod worktree;
 
 use anyhow::Result;
@@ -60,6 +61,13 @@ pub enum Command {
         #[command(subcommand)]
         command: task::TaskCommand,
     },
+    /// Manage VuePress integration (hub deployment + dev server).
+    ///
+    /// 管理 VuePress 集成（hub 部署 + dev server 生命周期）。
+    Vuepress {
+        #[command(subcommand)]
+        command: vuepress::VuepressCommand,
+    },
     /// Manage git worktrees attached to Hotpot tasks.
     ///
     /// 管理与 Hotpot 任务绑定的 git worktree。
@@ -102,6 +110,13 @@ impl HotpotCLI {
                 task::TaskCommand::Done(args) => task::done_task(args),
                 task::TaskCommand::Cancel(args) => task::cancel_task(args),
                 task::TaskCommand::Resume(args) => task::resume_task(args),
+            },
+            Command::Vuepress { command } => match command {
+                vuepress::VuepressCommand::Install(args) => vuepress::install(args),
+                vuepress::VuepressCommand::Uninstall => vuepress::uninstall(),
+                vuepress::VuepressCommand::Start(args) => vuepress::start(args),
+                vuepress::VuepressCommand::Stop(args) => vuepress::stop(args),
+                vuepress::VuepressCommand::Status => vuepress::status(),
             },
             Command::Worktree { command } => match command {
                 worktree::WorktreeCommand::Create(args) => worktree::create(args),

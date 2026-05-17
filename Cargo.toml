@@ -24,10 +24,21 @@ tiny_http = "0.12.0"
 # Cross-process advisory locking; protects concurrent writes to overview /
 # issues / issue-candidates JSONL files. See src/lock.rs.
 fs2 = "0.4"
+# Windows-friendly `canonicalize` that strips the `\\?\` verbatim prefix
+# when the underlying path doesn't need it. Prevents that prefix from
+# leaking into agent env-vars (ROOT_DIR / HOTPOT_*_PROMPT / ...) where
+# downstream consumers may URI-encode the `?` into `%3F` and break.
+# 跨平台 `canonicalize` 替代：在不需要的情况下剥离 Windows 的 `\\?\`
+# verbatim 前缀，避免该前缀污染 agent env-var（ROOT_DIR /
+# HOTPOT_*_PROMPT 等），防止下游把 `?` 编码为 `%3F` 产生畸形 URI。
+dunce = "1.0"
 
 
 [target.'cfg(windows)'.dependencies]
 junction = "2.0.0"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 # 发布构建以「最小体积 + 完整功能」为目标。
 # - opt-level = "z":  以体积为优先（比 "s" 更激进，对本项目 IO/字符串重的代码

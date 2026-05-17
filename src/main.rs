@@ -1,3 +1,4 @@
+mod assets;
 mod commands;
 mod context;
 mod issues;
@@ -6,6 +7,7 @@ mod paths;
 mod server;
 mod task;
 mod vuepress;
+mod workspace;
 mod worktree;
 
 use clap::Parser;

@@ -41,6 +41,19 @@ pub enum ClaudeHookCommand {
     ///
     /// 每条用户消息前重申输出语言；对抗"一次指令长会话漂移"。
     UserPromptSubmit,
+    /// Release any running VuePress dev server when a Claude Code session ends.
+    ///
+    /// Fires on Claude Code's `SessionEnd` event. Invokes the idempotent
+    /// `vuepress::stop_if_running` helper using the project root derived
+    /// from the hook payload's `cwd` (so it works regardless of which
+    /// directory the user invoked Claude Code from). Defense-in-depth
+    /// second layer behind `/hotpot:execute` pre-flight stop — catches
+    /// the case where the user closes the session without running
+    /// `/hotpot:execute`.
+    ///
+    /// session 结束时释放可能在跑的 VuePress dev server。第二层防护，
+    /// 兜底 `/hotpot:execute` 入口 stop 没被触发的场景。
+    SessionEnd,
 }
 
 /// Codex hook events supported by `hotpot hook codex`.
@@ -106,12 +119,33 @@ pub fn bootstrap(args: BootstrapArgs) -> Result<()> {
 pub fn claude(command: ClaudeHookCommand) -> Result<()> {
     let payload = read_hook_payload()?;
     let context = Context::from_payload(&payload)?;
+
+    // SessionEnd 是清理类 hook：不注入 additionalContext，只调
+    // vuepress::stop_if_running 释放 dev server，然后返回 minimal JSON。
+    // stop_if_running 失败仅 stderr 警告，不让 hook 失败——session 已经
+    // 在关闭，能清理就清理，清不掉也别 panic。
+    //
+    // SessionEnd is cleanup-only: no additionalContext to inject, just
+    // call the idempotent stop helper and return minimal JSON. Failures
+    // only stderr-warn so a flaky kill doesn't bubble up as a Claude
+    // hook error during session teardown.
+    if matches!(command, ClaudeHookCommand::SessionEnd) {
+        if let Err(err) = crate::vuepress::stop_if_running(&context.root_dir) {
+            eprintln!("vuepress stop_if_running failed: {err}");
+        }
+        return print_value(&json!({
+            "continue": true,
+            "suppressOutput": true,
+        }));
+    }
+
     let event_name = hook_event_name(
         &payload,
         match command {
             ClaudeHookCommand::PreToolUse => "PreToolUse",
             ClaudeHookCommand::SubagentStart => "SubagentStart",
             ClaudeHookCommand::UserPromptSubmit => "UserPromptSubmit",
+            ClaudeHookCommand::SessionEnd => unreachable!("handled in early return above"),
         },
     );
 
@@ -122,6 +156,7 @@ pub fn claude(command: ClaudeHookCommand) -> Result<()> {
         ),
         ClaudeHookCommand::SubagentStart => review_memory_message(&context),
         ClaudeHookCommand::UserPromptSubmit => language_directive_message(&context.language),
+        ClaudeHookCommand::SessionEnd => unreachable!("handled in early return above"),
     };
 
     print_value(&json!({
@@ -232,6 +267,27 @@ fn print_shell_exports(context: &Context) {
         "export HOTPOT_FINISH_WORK_PROMPT='{}'",
         shell_quote(&context.finish_work_prompt)
     );
+    // VuePress trio: `HOTPOT_VUEPRESS_ENABLED` is always exported (the prompt
+    // env-gate needs a deterministic value); port/url are exported only when
+    // enabled to avoid leaking stale state from disabled projects.
+    // VuePress 三件套：enabled 始终 export（prompt env-gate 需要确定值）；
+    // port/url 仅启用时 export，避免禁用项目残留状态泄漏。
+    println!(
+        "export HOTPOT_VUEPRESS_ENABLED='{}'",
+        shell_quote(&context.vuepress_enabled)
+    );
+    if !context.vuepress_port.is_empty() {
+        println!(
+            "export HOTPOT_VUEPRESS_PORT='{}'",
+            shell_quote(&context.vuepress_port)
+        );
+    }
+    if !context.vuepress_url.is_empty() {
+        println!(
+            "export HOTPOT_VUEPRESS_URL='{}'",
+            shell_quote(&context.vuepress_url)
+        );
+    }
 }
 
 /// Prints the hook context as JSON.
@@ -313,7 +369,7 @@ fn review_memory_message(context: &Context) -> String {
 
 /// Returns all Hotpot context values formatted for human-readable hook output.
 fn context_lines(context: &Context) -> Vec<String> {
-    vec![
+    let mut lines = vec![
         format!("- ROOT_DIR: {}", context.root_dir),
         format!("- HOTPOT_USERNAME: {}", context.username),
         format!("- HOTPOT_LANGUAGE: {}", context.language),
@@ -339,12 +395,32 @@ fn context_lines(context: &Context) -> Vec<String> {
             "- HOTPOT_FINISH_WORK_PROMPT: {}",
             context.finish_work_prompt
         ),
-    ]
+        // enabled 始终列出，作为 AI 走分支的确定信号；port/url 仅启用时附上。
+        // enabled is always listed (the deterministic branch signal for AI);
+        // port/url appear only when enabled.
+        format!(
+            "- HOTPOT_VUEPRESS_ENABLED: {}",
+            context.vuepress_enabled
+        ),
+    ];
+    if !context.vuepress_port.is_empty() {
+        lines.push(format!(
+            "- HOTPOT_VUEPRESS_PORT: {}",
+            context.vuepress_port
+        ));
+    }
+    if !context.vuepress_url.is_empty() {
+        lines.push(format!(
+            "- HOTPOT_VUEPRESS_URL: {}",
+            context.vuepress_url
+        ));
+    }
+    lines
 }
 
 /// Returns shell assignment snippets for all Hotpot context values.
 fn shell_export_assignments(context: &Context) -> String {
-    [
+    let mut pairs: Vec<(&'static str, &String)> = vec![
         ("ROOT_DIR", &context.root_dir),
         ("HOTPOT_USERNAME", &context.username),
         ("HOTPOT_LANGUAGE", &context.language),
@@ -367,11 +443,19 @@ fn shell_export_assignments(context: &Context) -> String {
         ("HOTPOT_NEW_PROMPT", &context.new_prompt),
         ("HOTPOT_EXECUTE_PROMPT", &context.execute_prompt),
         ("HOTPOT_FINISH_WORK_PROMPT", &context.finish_work_prompt),
-    ]
-    .into_iter()
-    .map(|(key, value)| format!("{key}={}", serde_json::to_string(value).unwrap_or_default()))
-    .collect::<Vec<_>>()
-    .join(" ")
+        ("HOTPOT_VUEPRESS_ENABLED", &context.vuepress_enabled),
+    ];
+    if !context.vuepress_port.is_empty() {
+        pairs.push(("HOTPOT_VUEPRESS_PORT", &context.vuepress_port));
+    }
+    if !context.vuepress_url.is_empty() {
+        pairs.push(("HOTPOT_VUEPRESS_URL", &context.vuepress_url));
+    }
+    pairs
+        .into_iter()
+        .map(|(key, value)| format!("{key}={}", serde_json::to_string(value).unwrap_or_default()))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Escapes a string for safe single-quoted shell output.

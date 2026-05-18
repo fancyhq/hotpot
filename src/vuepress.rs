@@ -33,36 +33,6 @@ use serde::{Deserialize, Serialize};
 use crate::assets;
 use crate::paths::{hotpot_dir, hotpot_hub_dir};
 
-/// Gets the repository name from the given root directory using `git remote -v`.
-///
-/// 通过 `git remote -v` 获取远程仓库名称
-pub fn get_repo_name(root_dir: &str) -> anyhow::Result<String> {
-    let output = std::process::Command::new("git")
-        .current_dir(root_dir)
-        .arg("remote")
-        .arg("-v")
-        .output()?;
-    if !output.status.success() {
-        return Err(anyhow::anyhow!("Failed to get repo name"));
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let first_line = stdout
-        .lines()
-        .map(str::trim)
-        .find(|l| !l.is_empty())
-        .ok_or_else(|| anyhow::anyhow!("Failed to get repo name"))?;
-    let url = first_line
-        .split_whitespace()
-        .find(|tok| tok.contains("git"))
-        .ok_or_else(|| anyhow::anyhow!("No git-like token in remote line"))?;
-    let last_segment = url.rsplit(['/', ':']).next().unwrap_or("");
-    let repo_name = last_segment.trim_end_matches(".git").trim();
-    if repo_name.is_empty() {
-        return Err(anyhow::anyhow!("Failed to derive repo name from {url}"));
-    }
-    Ok(repo_name.to_string())
-}
-
 /// 获取 .hotpot-hub/docs 下所有的用户目录任务文件目录
 pub fn get_vuepress_user_dir_entries(root_dir: &str) -> Vec<fs::DirEntry> {
     let vuepress_docs_dir = hotpot_hub_dir(root_dir).join("docs");
@@ -109,14 +79,14 @@ pub fn sync_tasks_links(root_dir: &str) -> anyhow::Result<()> {
 
     // (1) 当前 workspaces 下的 user 名集合（用 OsString 兼容非 UTF-8 路径）。
     // (1) Snapshot live users in workspaces; OsString covers non-UTF-8 names.
-    let workspace_users: std::collections::HashSet<std::ffi::OsString> = fs::read_dir(&workspace_dir)?
-        .filter_map(|res| res.ok())
-        .filter(|res| {
-            res.path().is_dir()
-                && !res.file_name().to_str().is_some_and(|f| f.starts_with("."))
-        })
-        .map(|entry| entry.file_name())
-        .collect();
+    let workspace_users: std::collections::HashSet<std::ffi::OsString> =
+        fs::read_dir(&workspace_dir)?
+            .filter_map(|res| res.ok())
+            .filter(|res| {
+                res.path().is_dir() && !res.file_name().to_str().is_some_and(|f| f.starts_with("."))
+            })
+            .map(|entry| entry.file_name())
+            .collect();
 
     // (2) Prune stale：hub docs 下存在但 workspaces 已删除的 user link。
     //     单条 prune 失败不阻塞——继续处理其余 entry。

@@ -20,9 +20,10 @@
 - [x] **bug**: 启动 `vuepress` 后，给的链接地址错误，需要使用包含日期、不包含后缀的完整文件名
 - [ ] **bug**: `git-worktree` 的名称应该使用任务 `title`（不带时间），而不是任务 `task_id` 
 - [ ] **feat**: `issue-condidates.jsonl` 应该直接在 `.hotpot` 下，而不是某个用户目录下，因为这是属于全局的错误记录
-- [ ] **bug**: 启动 `hotpot-execute` 时出现了报错：`Unknown agent type: hotpot-executionן codex-result-7fc55d31-78d6-4a0a-826a-4d89ca5387d3 is not a valid agent type` 
-- [ ] **bug**: 经常会出现 `API` 错误或者 `"Concurrency limit exceeded for user, please retry later"` 类型的错误
+- [x] **bug**: 启动 `hotpot-execute` 时出现了报错：`Unknown agent type: hotpot-executionן codex-result-7fc55d31-78d6-4a0a-826a-4d89ca5387d3 is not a valid agent type` 
+- [x] **bug**: 经常会出现 `API` 错误或者 `"Concurrency limit exceeded for user, please retry later"` 类型的错误
 - [ ] **feat**: `hotpot:finish-work` 流程太长，看是否能合并一些问题和操作
+- [ ] **bug**: 在使用 `brainstorming` 时，如果进行了其他对话操作，对于 `vuepress` 的规范会缺失，也不会启动并提醒 `vuepress` 查看
 
 ## 测试部署
 

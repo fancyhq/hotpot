@@ -20,7 +20,9 @@
 //! as a config error by `verify_install_consistency` at start time.
 
 use std::fs;
-use std::path::PathBuf;
+use std::io::{BufRead, BufReader};
+use std::net::TcpStream;
+use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -664,6 +666,87 @@ fn terminate_pid(pid: u32, force: bool) -> Result<()> {
     Ok(())
 }
 
+/// `wait_for_port_ready` 的硬上限——pnpm + vuepress 首次构建经验
+/// 上限。超过就 bail 并附 vuepress.log tail，由用户决定继续等还是
+/// 排查。
+///
+/// Hard upper bound for `wait_for_port_ready`; the empirical ceiling
+/// for a first pnpm + vuepress build of this hub. Defined above the
+/// consumer per the module's "constants before usage" convention
+/// (see `VUEPRESS_TABLE_TEMPLATE`).
+const READINESS_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// 单次 `TcpStream::connect_timeout` 调用的超时——250ms 足以让
+/// 内核把 SYN 走完三次握手，过短会假阴性、过长会让总轮询稀疏。
+///
+/// Per-attempt connect timeout (250 ms): long enough for the kernel
+/// to complete a local SYN handshake, short enough to keep the poll
+/// loop responsive.
+const READINESS_CONNECT_TIMEOUT: Duration = Duration::from_millis(250);
+
+/// 两次 connect 尝试之间的等待——让出 CPU + 给 vite 一点构建时间，
+/// 总循环上限 30s / 250ms = 120 次，足够细。
+///
+/// Poll interval between connect attempts: yields CPU and gives Vite
+/// a moment to make progress. With a 30s hard cap that's up to ~120
+/// probes, which is plenty of granularity.
+const READINESS_POLL_INTERVAL: Duration = Duration::from_millis(250);
+
+/// 等 `127.0.0.1:<port>` 接受 TCP 连接，作为 vuepress 端口就绪的判据。
+///
+/// 每 [`READINESS_POLL_INTERVAL`] 探一次 connect，单次 connect 超时
+/// [`READINESS_CONNECT_TIMEOUT`]；总时长上限 [`READINESS_TIMEOUT`]
+/// 即 pnpm + vuepress 首次构建的经验上限——本仓库 hub 体量小，实测
+/// 5–15s，30s 是给冷缓存 / 慢盘留余量。超时返回 `Err`，调用方应附带
+/// `vuepress.log` 末尾做线索。
+///
+/// Polls `127.0.0.1:<port>` until vuepress accepts a TCP connection.
+/// `READINESS_TIMEOUT` (30s) is the empirical upper bound for a first
+/// pnpm+vuepress build of this hub. On timeout returns `Err`; the
+/// caller should attach the tail of `vuepress.log` as a diagnostic
+/// hint so the user can see what pnpm logged before bailing.
+fn wait_for_port_ready(port: u16) -> Result<()> {
+    let addr = format!("127.0.0.1:{port}")
+        .parse()
+        .with_context(|| format!("failed to parse readiness probe address 127.0.0.1:{port}"))?;
+    let deadline = Instant::now() + READINESS_TIMEOUT;
+    loop {
+        if TcpStream::connect_timeout(&addr, READINESS_CONNECT_TIMEOUT).is_ok() {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            bail!(
+                "vuepress port {port} did not become ready within {}s",
+                READINESS_TIMEOUT.as_secs()
+            );
+        }
+        thread::sleep(READINESS_POLL_INTERVAL);
+    }
+}
+
+/// 读 `vuepress.log` 末尾 `max_lines` 行，作为 readiness 探测超时时
+/// 的诊断附录。读不到（文件不存在 / 权限错 / IO 错）返回空字符串而
+/// 不是 propagate——线索本身是 best-effort，不应掩盖真正的 timeout
+/// 错误。
+///
+/// Best-effort tail of `vuepress.log`. Any IO error returns an empty
+/// string; the readiness timeout error is the primary signal.
+fn read_log_tail(log_path: &Path, max_lines: usize) -> String {
+    let file = match fs::File::open(log_path) {
+        Ok(f) => f,
+        Err(_) => return String::new(),
+    };
+    let reader = BufReader::new(file);
+    let mut buf: Vec<String> = Vec::with_capacity(max_lines);
+    for line in reader.lines().map_while(Result::ok) {
+        if buf.len() == max_lines {
+            buf.remove(0);
+        }
+        buf.push(line);
+    }
+    buf.join("\n")
+}
+
 /// 启动 VuePress dev server。
 ///
 /// 流程：[`verify_install_consistency`] → 检查既有 runtime.json
@@ -810,6 +893,19 @@ pub fn start(root_dir: &str, port: u16, ttl_seconds: u64) -> Result<()> {
         .with_context(|| format!("failed to spawn `{pnpm} run docs:dev`"))?;
 
     let pid = child.id();
+
+    // runtime.json 必须在 readiness probe 之前落盘：probe 期内 pnpm
+    // 已经活着，若并发调用方（如 SessionEnd hook 或用户手动 `vuepress
+    // status` / `vuepress stop`）此时来读，会因 runtime.json 不存在而
+    // 错判 "未运行"——既泄漏当前 spawn 的 pnpm，又让 stop 误 bail
+    // "not running"。把 runtime.json 写盘提前到这里关闭这个可见性窗口。
+    //
+    // Write runtime.json BEFORE the readiness probe: during the probe
+    // window pnpm is already alive, and any concurrent reader (a
+    // SessionEnd hook, a parallel `vuepress status`, or `vuepress
+    // stop`) that finds no runtime.json wrongly concludes "not
+    // running" — leaking the just-spawned process and making stop
+    // bail. Hoisting the writeback closes that visibility gap.
     let started_at = Utc::now();
     let expires_at = if ttl_seconds == 0 {
         None
@@ -826,6 +922,47 @@ pub fn start(root_dir: &str, port: u16, ttl_seconds: u64) -> Result<()> {
         expires_at,
     };
     write_runtime_state(root_dir, &state)?;
+
+    // 端口就绪探测（P-A）：vuepress 的 vite dev server 是先 spawn、
+    // 后才在异步任务里完成构建并 bind 端口；如果直接 println! URL，
+    // 用户立刻点开浏览器会看到 connection refused / spin，被误读
+    // 为「hotpot vuepress start 卡住」。在此处阻塞最多 30s 等
+    // `127.0.0.1:<port>` accept TCP，端口可连了再让 start 返回 URL。
+    // 超时则附 vuepress.log 末尾 20 行作为线索 bail —— 30s 是
+    // pnpm + vuepress 首次构建的经验上限，本仓库 hub 实测 5–15s。
+    //
+    // Port-readiness probe (P-A): VuePress's Vite dev server forks
+    // first and binds the port only after the build worker completes
+    // an initial pass. Printing the URL before the bind would let the
+    // user click into a connection-refused / spinning browser tab,
+    // which they mis-read as "start hung". Block up to 30s here until
+    // `127.0.0.1:<port>` accepts a TCP connect — this hub typically
+    // becomes ready in 5–15s; 30s leaves margin for cold caches and
+    // slow disks. On timeout we bail with the log tail attached so
+    // the user has something concrete to debug.
+    if let Err(err) = wait_for_port_ready(port) {
+        let tail = read_log_tail(&log_path, 20);
+        // 复用 stop 的 TERM → 3s 轮询 → KILL 升级 + runtime.json 清理：
+        // 这样 pnpm 以及孙子进程（vuepress.js / esbuild）整棵 tree 都
+        // 会被处理，而不仅 group leader；同时 runtime.json 与现实保持
+        // 一致，不会留下 "enabled & runtime present 但进程已死" 的
+        // 中间态。stop 本身的错误是 best-effort，readiness-timeout 才
+        // 是主要信号。
+        //
+        // Reuse stop's TERM → 3 s poll → KILL escalation AND its
+        // runtime.json cleanup so pnpm and its grandchildren
+        // (vuepress.js / esbuild) are reaped together, not just the
+        // group leader. This also keeps runtime.json consistent with
+        // reality. Errors from stop are best-effort — the
+        // readiness-timeout error is the primary signal.
+        let _ = stop(root_dir, true);
+        let tail_msg = if tail.is_empty() {
+            "vuepress.log tail: <empty>".to_string()
+        } else {
+            format!("vuepress.log tail:\n{tail}")
+        };
+        return Err(err.context(tail_msg));
+    }
 
     // 单行 JSON：AI 用 Bash 拿到 stdout 后直接 JSON.parse。
     // Single-line JSON: the brainstorming-closing prompt parses this

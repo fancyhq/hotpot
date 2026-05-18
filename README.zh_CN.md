@@ -13,3 +13,33 @@
 - `vuepress` 集成能力，可以通过浏览器来查看更美观的任务文件，无需 `markdown` 阅读器等，此功能依赖 `npm` 和 `pnpm`
 - 两轮自动审查与自修复
 - 无任何外部依赖（启用 `vuepress` 会需要 `pnpm`）
+- `TDD` 命中机制，当判断需要使用 `TDD` 时才会启用，但仍由你选择，`AI` 仅做判断，不做决定
+
+## 使用
+
+### 项目初始化
+
+> [!CAUTION]
+> 一般情况下，不要直接使用 `hotpot init` 命令，这会将所有 `agent` 工具配置安装上，你需要选择你目前使用的平台
+
+每个项目至少需要操作一次，如果需要添加其他 `agent` 工具支持，你可以使用下面类似的命令，：
+
+```bash
+hotpot init --platform opencode
+```
+
+### 开始任务
+
+启动你的 `agent` ，然后使用 `hotpot:new` 命令来创建一个任务
+
+```bash
+/hotpot:new <你的需求>
+```
+
+### 完成任务
+
+当全部完成并人工检验后，使用 `hotpot:finish-work` 来完成此任务
+
+```bash
+/hotpot:finish-work
+```

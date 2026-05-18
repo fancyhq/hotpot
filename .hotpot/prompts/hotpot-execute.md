@@ -29,6 +29,49 @@ Run `hotpot vuepress stop --if-running` once at the start of this command (run v
 
 Rationale: when VuePress is enabled, `/hotpot:new` may have spawned a `pnpm docs:dev` process to give the user a browser preview. Calling stop here is the primary mechanism that releases that process; the per-platform SessionEnd hook is a secondary safety net for cases where the user closes the session instead of running this command.
 
+## Pre-flight: Verify Subagent Registration
+
+Run this check **before** the Worktree Decision (Step 0). Its purpose is to catch the OpenCode-style `Unknown agent type: hotpot-execution` failure mode (and its Claude / Codex equivalents) at a single, recoverable point — not deep inside the execute / review loop where the symptom is opaque.
+
+### What To Check
+
+Probe whichever platform configuration directories exist under `$ROOT_DIR`. If a project has multiple platforms installed (e.g. both `.claude/` and `.opencode/`), check each one in turn:
+
+- Claude Code present → require `$ROOT_DIR/.claude/agents/hotpot-execution.md` and `$ROOT_DIR/.claude/agents/hotpot-review.md`
+- OpenCode present → require `$ROOT_DIR/.opencode/agents/hotpot-execution.md` and `$ROOT_DIR/.opencode/agents/hotpot-review.md`
+- Codex present → require `$ROOT_DIR/.codex/agents/hotpot-execution.toml` and `$ROOT_DIR/.codex/agents/hotpot-review.toml`
+- Pi present → **skip this check**. Pi has no native subagent registry; `/hotpot:execute` runs as same-session phased execution, so there is no `Unknown agent type` failure surface.
+
+Use a `$ROOT_DIR`-relative bash probe (do NOT hard-code absolute paths from another user's machine):
+
+```bash
+for plat in claude opencode; do
+  if [ -d "$ROOT_DIR/.$plat" ]; then
+    for role in execution review; do
+      f="$ROOT_DIR/.$plat/agents/hotpot-$role.md"
+      [ -f "$f" ] || echo "MISSING: $f"
+    done
+  fi
+done
+if [ -d "$ROOT_DIR/.codex" ]; then
+  for role in execution review; do
+    f="$ROOT_DIR/.codex/agents/hotpot-$role.toml"
+    [ -f "$f" ] || echo "MISSING: $f"
+  done
+fi
+```
+
+### How To React
+
+- All required files present and a subsequent subagent call succeeds → continue silently.
+- At least one required file is missing → STOP and reply to the user with:
+
+  > Hotpot subagent file missing at `<path>`. The `<platform>` registry cannot resolve `hotpot-execution` / `hotpot-review`. Run `hotpot update --platform <platform>`, then restart the agent session before re-running `/hotpot:execute`.
+
+- All required files are present on disk but a later subagent invocation still fails with `Unknown agent type: hotpot-execution` (or `hotpot-review`) → treat this as a platform subagent-registry cache miss. Apply the **same** recovery path: ask the user to run `hotpot update --platform <platform>` and to **restart the agent session** (the session must be torn down so the registry is rebuilt), then STOP. Do not retry the same subagent in the current session — the cache will keep returning the same `Unknown agent type` error.
+
+This pre-flight runs **before** the Worktree Decision (Step 0) so a doomed run does not create a worktree that will immediately be orphaned.
+
 ## Precondition: Task File Must Exist
 
 The active task `.md` MUST already exist on disk before this command runs. If `Read` on the resolved active path returns "File not found", `/hotpot:new` for this title did not complete its write step. Stop and tell the user to re-run `/hotpot:new` for the task — do NOT silently recreate the file ad-hoc from `overview.jsonl`, the brainstorming and approved design would be lost.
@@ -169,6 +212,44 @@ After validating the task structure, scan the `## Plan > ### Mode` block for a l
 
 Remember this choice; it controls which prompt variant you inject into the execution and review subagents and how the Final Response is formatted. The choice is loaded once at the start of the command and applies to every fix round in this run.
 
+## Subagent Invocation Error Handling
+
+This section governs **every** subagent invocation in this command — the execution agent, the review agent, and every fix-round execution agent. It exists because provider-side transient failures (concurrency limits, rate limits, 5xx, gateway timeouts) routinely kill an orchestrator turn mid-flight and require the user to manually nudge the session back to life. Apply these rules uniformly; do not invent ad-hoc retries elsewhere in the prompt.
+
+### Transient Error Signature (case-insensitive substring match)
+
+Treat a subagent invocation as **transient-failed** when its surfaced error contains any of:
+
+- `Concurrency limit exceeded`
+- `rate limit` / `Rate limit exceeded` / HTTP `429`
+- `API Error 524` / `502` / `503` / `service unavailable` / `gateway timeout`
+- `internal error` / `internal server error` (HTTP 5xx)
+- `connection reset` / `read timeout` / `socket hang up` / `ECONNRESET` / `ETIMEDOUT`
+
+Match is case-insensitive substring on the error text the platform surfaces (status line, error body, or thrown message).
+
+### Retry Behavior
+
+- Retry the **same** subagent with the **exact same prompt bytes** — do not regenerate the prompt, do not trim context, do not change the agent name. The prompt must be byte-identical to the failed attempt.
+- Wait 5–10 seconds between attempts (orchestrator AI may pick any value in that window).
+- Maximum 2 retries → up to 3 total attempts per subagent invocation.
+- The orchestrator MUST keep an explicit attempt counter in its reasoning trace, e.g. `attempt 1/3`, `attempt 2/3`, `attempt 3/3`. Never enter a retry without naming the current attempt number; this is the only thing standing between transient-error recovery and an infinite retry loop.
+
+### After All 3 Attempts Fail
+
+- Surface the **raw provider error verbatim** to the user, no paraphrasing, no localization.
+- Ask the user to re-run `/hotpot:execute` (the `## Resume After Transient Failure` section then drives the resume path on the next turn).
+- Do **not** write any issue candidate to disk.
+- Do **not** silently fall back to inline same-session execution — that bypasses the read-only review invariant and pollutes the orchestrator context with execution-agent-only material.
+
+### Non-Transient Failure Modes (do NOT retry)
+
+- `Unknown agent type: hotpot-execution` / `Unknown agent type: hotpot-review` → this is a platform subagent-registry problem, not a provider transient. Stop and follow `## Pre-flight: Verify Subagent Registration` → "How To React" (ask the user to run `hotpot update --platform <platform>` and restart the session). Retrying in the current session will keep hitting the cached miss.
+- Subagent returns a final report containing a **blocker, mismatch, or refusal** (e.g. "stop and report the mismatch instead of guessing", "required file missing") → this is the normal blocker path, not a transient error. Surface the blocker to the user; do not retry.
+- Any error not matching the transient signature list above → treat as a hard failure. Surface it to the user; do not retry.
+
+The retry envelope only protects against provider-side transient failures. Logic / blocker / registry failures must surface immediately so the user can intervene.
+
 ## Execution Agent
 
 Invoke the registered Hotpot execution agent according to the platform's mapping (see the thin shell's platform note). If the platform has no registered execution agent, fall through to a same-session execution phase using the embedded prompt below as the phase contract, then run a separate read-only review phase afterward.
@@ -285,6 +366,27 @@ cd <worktree-path> && git diff
 
 If the project is a git repo, collect changed files and diff with git.
 
+### Diff Size Cap (review-prompt payload control)
+
+Large diffs are a primary cause of provider transient errors (single-request body too large → 524 / gateway timeout). Bound the diff embedded in the review prompt with the following policy. The threshold is a deliberately explicit constant; treat it as the single knob.
+
+- **`DIFF_CAP_BYTES = 40960`** (40 KB). This threshold balances "review agent can see the full hunk in one shot" against the provider single-request size window where 524s start appearing in practice. Do NOT introduce a separate per-mode threshold.
+
+Procedure:
+
+1. Run `git diff --stat` and keep the full output — it is always small (file-level summary) and always embedded verbatim.
+2. Run `git diff` and measure its byte length (e.g. `git diff | wc -c`).
+3. If `bytes ≤ DIFF_CAP_BYTES` → embed the full `git diff` output unchanged in the review prompt.
+4. If `bytes > DIFF_CAP_BYTES` → switch to **per-file truncation**:
+   - Embed the full `git diff --stat` output.
+   - For each changed file, embed at most the first 8192 bytes of `git diff -- <file>`. Use **line-oriented truncation** (e.g. `git diff -- <file> | awk 'BEGIN{n=0} { if (n+length+1 > 8192) exit; print; n += length+1 }'`) rather than `head -c 8192` to avoid splitting a multi-byte UTF-8 character (Chinese paths, Chinese comments, emoji in commit messages, etc.) at a non-character boundary, which can produce invalid UTF-8 sequences that some provider request paths reject.
+   - Append the literal marker `[... truncated; review agent should run `git diff -- <file>` for the full hunk ...]` immediately after any file whose hunk was cut.
+   - The review prompt's diff section header MUST note that per-file truncation is active so the review agent knows to fetch full hunks via `git diff -- <file>` when needed.
+
+Worktree caveat: when a worktree is attached, prefix every `git diff` / `git diff -- <file>` invocation in this procedure with `cd <worktree-path> && …`. The byte measurement and per-file truncation run inside the worktree.
+
+The same cap applies to the diff embedded in the `## Automatic Fix Loop` fix prompt — fix-round diffs grow with each round, so they need the same protection.
+
 If the project is not a git repo, or git commands fail because git is unavailable, continue without failing the command. In that case:
 
 - Use the execution agent report as the primary source for changed files.
@@ -315,6 +417,26 @@ Build the issue context from changed file paths and useful keywords from the tas
 If git is unavailable, use reported changed files from the execution agent. If no changed files are known, call `hotpot issues relevant` with useful `--keyword` values only.
 
 If there are no changed files, still run review only if the execution agent claims completion; the review prompt should call out that no changed files were detected.
+
+### Issue Memory Cap (review-prompt payload control)
+
+`hotpot issues relevant` already caps at `--limit 5`, but each row carries the full `Scene`, `Review Check`, and `Notes` fields, which can run to thousands of bytes per issue. Combined with a large diff, this is one of the primary contributors to the oversized review-prompt payload that triggers provider 524 / gateway-timeout errors.
+
+Before embedding the `hotpot issues relevant` output into the review prompt, **strip every field except**:
+
+- `issue_id`
+- `Scene`
+- `Review Check`
+
+Drop `Notes`, timestamps, source provenance, and any other field the JSON output may carry. The reduction is purely on the orchestrator side at prompt-build time — do not modify `.hotpot/issues.jsonl` or the `hotpot issues relevant` CLI output schema.
+
+If the review agent decides during review that a finding needs the full issue record (e.g. the stripped `Scene` is too terse, or `Notes` matters for the judgement), it can retrieve the full row with:
+
+```bash
+cat $ROOT_DIR/.hotpot/issues.jsonl | jq 'select(.issue_id == "<id>")'
+```
+
+The review prompt's "Relevant Hotpot issue memory" header MUST state explicitly that the memory has been reduced to `issue_id` + `Scene` + `Review Check`, so the review agent knows to use the `jq` command above when the reduced view is insufficient.
 
 ## Review Agent
 
@@ -360,18 +482,18 @@ Changed files:
 <changed files>
 ```
 
-Git diff or fallback change context:
+Git diff or fallback change context (may be per-file truncated when total diff exceeds 40 KB; see "Diff Size Cap" in the orchestrator's Collect Review Context section):
 
 ```diff
-<git diff, or an explicit message explaining that git diff is unavailable because the project is not a git repository or git failed>
+<git diff, possibly per-file truncated when the total diff size exceeds 40 KB; when truncated, each cut file ends with the literal marker `[... truncated; review agent should run `git diff -- <file>` for the full hunk ...]`; or an explicit message explaining that git diff is unavailable because the project is not a git repository or git failed>
 ```
 
 If git diff is unavailable, inspect relevant files directly based on the task file, execution report, and reported changed files.
 
-Relevant Hotpot issue memory:
+Relevant Hotpot issue memory (stripped to `issue_id`, `Scene`, `Review Check` only — fetch the full record on demand with `cat $ROOT_DIR/.hotpot/issues.jsonl | jq 'select(.issue_id == "<id>")'`):
 
 ```markdown
-<output from hotpot issues relevant>
+<output from hotpot issues relevant, reduced to issue_id + Scene + Review Check fields>
 ```
 
 Review requirements:
@@ -379,7 +501,8 @@ Review requirements:
 - Check the diff against the full task file, especially `## Task`, `## Plan`, and `## Execution Instructions`.
 - Check whether validation from the task file was actually run.
 - Check whether the execution stayed inside scope and non-goals.
-- For every relevant Hotpot issue memory, decide whether its `Scene` matches the current change. If it matches, perform its `Review Check`.
+- For every relevant Hotpot issue memory, decide whether its `Scene` matches the current change. If it matches, perform its `Review Check`. If the stripped Scene/Review Check is too terse to judge, fetch the full record via the `jq` command above before deciding.
+- If the diff section indicates per-file truncation, run `git diff -- <file>` for any file whose review-relevance demands the full hunk (e.g. semantic change spans more than 8 KB, or the cut marker hides the function body you need to read).
 - Report only actionable findings. Do not nitpick unrelated style.
 - Do not modify code or files.
 ````
@@ -426,23 +549,25 @@ Changed files:
 <changed files>
 ```
 
-Git diff or fallback change context:
+Git diff or fallback change context (may be per-file truncated when total diff exceeds 40 KB; see "Diff Size Cap" in the orchestrator's Collect Review Context section):
 
 ```diff
-<git diff, or an explicit message explaining that git diff is unavailable because the project is not a git repository or git failed>
+<git diff, possibly per-file truncated when the total diff size exceeds 40 KB; when truncated, each cut file ends with the literal marker `[... truncated; review agent should run `git diff -- <file>` for the full hunk ...]`; or an explicit message explaining that git diff is unavailable because the project is not a git repository or git failed>
 ```
 
 If git diff is unavailable, inspect relevant files directly based on the task file, execution report, and reported changed files.
 
-Relevant Hotpot issue memory:
+Relevant Hotpot issue memory (stripped to `issue_id`, `Scene`, `Review Check` only — fetch the full record on demand with `cat $ROOT_DIR/.hotpot/issues.jsonl | jq 'select(.issue_id == "<id>")'`):
 
 ```markdown
-<output from hotpot issues relevant>
+<output from hotpot issues relevant, reduced to issue_id + Scene + Review Check fields>
 ```
 
 Review requirements (TDD mode):
 
 - All default review checks (scope, validation, issue-memory `Scene`/`Review Check` matching) still apply.
+- If the diff section indicates per-file truncation, run `git diff -- <file>` for any file whose review-relevance demands the full hunk (TDD review especially needs to read the full test-vs-implementation diff for each Red/Green segment, so do not skip this fetch).
+- If a Hotpot issue's stripped Scene/Review Check is too terse to judge, fetch the full record via `cat $ROOT_DIR/.hotpot/issues.jsonl | jq 'select(.issue_id == "<id>")'` before deciding.
 - **TDD Conformance Check**: for every `#### Task N` listed in the task file's `## Plan > ### Implementation Tasks`, verify the execution report contains a structured `Task <N>:` evidence block with Red / Green / Refactor sub-fields.
   - Missing block, missing sub-field, or out-of-order segments → `High`-severity finding "TDD evidence missing for Task <N>".
   - Red's `failure` looks like a compile error, dependency error, command-not-found, or unrelated environment failure → `High`-severity finding "Invalid Red for Task <N> — failure is not an assertion-level signal".
@@ -487,10 +612,10 @@ Current changed files:
 <changed files>
 ```
 
-Current git diff or fallback change context:
+Current git diff or fallback change context (may be per-file truncated when total diff exceeds 40 KB; see "Diff Size Cap" in the orchestrator's Collect Review Context section):
 
 ```diff
-<git diff, or an explicit message explaining that git diff is unavailable because the project is not a git repository or git failed>
+<git diff, possibly per-file truncated when the total diff size exceeds 40 KB; when truncated, each cut file ends with the literal marker `[... truncated; review agent should run `git diff -- <file>` for the full hunk ...]`; or an explicit message explaining that git diff is unavailable because the project is not a git repository or git failed>
 ```
 
 Fix rules:
@@ -499,6 +624,7 @@ Fix rules:
 - Preserve all original task constraints and non-goals.
 - Update task checkboxes only if they accurately reflect completed work.
 - Run relevant validation after fixing.
+- If the diff section indicates per-file truncation, run `git diff -- <file>` for any file whose fix demands seeing the full hunk before editing.
 - Return changed files, validation results, remaining blockers, and any findings you could not fix.
 ````
 
@@ -576,6 +702,56 @@ cargo run -- issues candidate add
 Expect stdout `{"added":N}` where N is the number of candidates written. If the count is unexpected, surface the discrepancy in the final response.
 
 **Constraint:** never write to `.hotpot/workspaces/<user>/issue-candidates.jsonl` (directly or via `hotpot issues candidate add`) before showing candidates to the user and receiving explicit approval. The value gate lives in the prompt and in this user confirmation step — bypassing it pollutes the per-user memory log.
+
+## Resume After Transient Failure
+
+This section runs **only when** the very first user message in the current turn is a short wake-up cue rather than a fresh `/hotpot:execute` invocation. Treat the following as wake-up cues (case-insensitive substring match, length ≤ 16 characters of meaningful text, leading/trailing whitespace ignored):
+
+- `continue`, `resume`, `retry`, `proceed`, `go on`
+- `继续`, `继续执行`, `重新执行`, `继续吧`, `接着`, `重试`
+- A single repeat of the previous slash command (e.g. just `/hotpot:execute` with no new arguments) **only when** the immediately previous assistant turn ended with a provider transient error matching the `## Subagent Invocation Error Handling` signature list.
+
+Additional gate: even when one of the cues above matches, you MUST confirm from the current session's visible context that the immediately previous assistant turn actually ended mid-flight with a transient-error signature. If you cannot confirm that from your own context (e.g. fresh shell, no recoverable transcript), treat the message as a fresh invocation and run from Step 0. Never enter the resume path on cue alone — false positives skip worktree decision and task-file structure validation.
+
+If none of those apply, do **not** enter this resume path — run the command fresh from Step 0.
+
+### Why This Section Exists
+
+A provider transient error (concurrency limit, 429, 524, gateway timeout) can kill the orchestrator turn mid-flight, leaving partial state on disk: a worktree exists, the execution agent already ran (or partially ran), the review agent may have run, candidates may or may not be buffered. Restarting from Phase 0 would re-spawn subagents that already succeeded, double-write task-file checkboxes, double-fetch issue memory, and waste provider quota. This section locates the interruption point from on-disk evidence and resumes from the next unfinished action.
+
+### Self-Probe Sequence
+
+Run these probes **in order**, in the orchestrator session (not in a subagent), before deciding where to resume:
+
+1. **Active task path** — `hotpot task active --path` (in this repo: `cargo run -q -- task active --path`). If empty, the previous run never reached `task create` → run the full command fresh.
+2. **Task file checkbox state** — `Read` the task file from step 1 and scan `## Plan > ### Implementation Tasks` for `- [x]` vs `- [ ]` checkboxes. Ticked steps are work the execution agent already finished and should not be redone.
+3. **Working-tree state** — `git status --porcelain` and `git diff --stat` (prefix with `cd <worktree-path> &&` when a worktree is attached). Empty status with no checkboxes ticked → execution agent never ran or was rolled back. Non-empty status → execution agent landed at least one edit.
+4. **Candidate buffer state** — `hotpot issues candidate list` (in this repo: `cargo run -q -- issues candidate list`). Non-empty output means execution + review + candidate proposal all completed; only the user-confirmation step is pending.
+5. **Last assistant transcript line** — re-read the immediately previous assistant turn (or the platform's transcript file when available) to see which phase its final line announced.
+
+### Interruption Point → Next Action Map
+
+Cross-reference the signals from the self-probe sequence and resume from the **next** unfinished action. Never replay a phase whose evidence is already on disk.
+
+| Signals | Interruption Point | Resume From |
+|---|---|---|
+| no `task active --path`, or `--path` returns non-existent file | before Phase 0 | re-run the full command (the user message is treated as a fresh `/hotpot:execute`) |
+| `task active` ok, `git status` empty, no checkboxes ticked | between Phase 0 and the execution agent's first edit | re-invoke the execution agent with the same prompt (do NOT recreate the worktree if one is already attached) |
+| `git status` non-empty, some checkboxes ticked, candidate buffer empty, last announced phase was execution | execution agent died after partial edits | re-invoke the execution agent with the same prompt; it will read the existing checkboxes and continue |
+| `git status` non-empty, last announced phase was "collect review context" | between execution-completion and review-agent invocation | jump to `## Collect Review Context` and then `## Review Agent` |
+| `git status` non-empty, last announced phase was review or fix loop | during review or a fix round | resume the fix loop at the next unfinished round (preserve the current round counter; the 2-round hard cap is shared, not reset) |
+| candidate buffer non-empty (`hotpot issues candidate list` returns rows) | between candidate proposal and user confirmation | jump to `## Confirm Candidates With User` and re-surface the buffered candidates to the user |
+
+### Hard Constraints
+
+- Do **not** restart from Phase 0 when on-disk evidence shows later phases completed.
+- Do **not** re-spawn a subagent whose final report you can recover from the previous transcript. If the transcript is unavailable, prefer re-invoking the execution agent (idempotent for code already on disk) over re-invoking the review agent (which would produce a fresh review pass against the same diff and waste provider quota).
+- Do **not** reset the fix-round counter. Fix rounds 1 and 2 are the same hard cap across resumes; an interrupted round 2 resumes as round 2, not round 1.
+- Do **not** reset the worktree decision. If a worktree was attached before the interruption, every resumed step still operates inside `<worktree-path>`.
+
+### Scope Note
+
+True "no user message at all" auto-resume requires platform hook support (Claude `Stop`, OpenCode `session.*`, Codex has no reliable SessionEnd hook, Pi `session_shutdown`) and a separate orchestration layer outside this prompt. That work is explicitly **out of scope** for this section — this section only minimizes the cost of the one-word user nudge that today's platforms require.
 
 ## Final Response
 

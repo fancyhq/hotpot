@@ -43,3 +43,5 @@ hotpot init --platform opencode
 ```bash
 /hotpot:finish-work
 ```
+
+## 执行流程

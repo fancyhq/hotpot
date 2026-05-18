@@ -15,10 +15,14 @@
 - [ ] **bug**: 使用 `hotpot init --platform` 添加其他平台时，如果 `config.toml` 已配置 `vuepress` ，将不再提示是否启用，有 `hotpot-hub` 文件夹将不再重复添加
 - [ ] **feat**: 在 `brainstorming` 等文件中，移除使用 `cargo run --` 的说明，全部使用 `hotpot` 正式二进制名称
 - [ ] **bug**: 有时候在写入 `task` 文件时，在 `config.toml` 中设置 `language = "中文简体"` 会出现中英混合写入的情况
-- [ ] **bug**: 在 `opencode` 中，`brainstorming` 结束未提示用户是否使用 `vuepress` 查看，写入的文件也未使用 `vuepress` 规定格式，需要验证所有平台的一致性
+- [x] **bug**: 在 `opencode` 中，`brainstorming` 结束未提示用户是否使用 `vuepress` 查看，写入的文件也未使用 `vuepress` 规定格式，需要验证所有平台的一致性
 - [ ] **feat**: 安装的提示都使用英文
-- [ ] **bug**: 启动 `vuepress` 后，给的链接地址错误，需要使用包含日期、不包含后缀的完整文件名
+- [x] **bug**: 启动 `vuepress` 后，给的链接地址错误，需要使用包含日期、不包含后缀的完整文件名
 - [ ] **bug**: `git-worktree` 的名称应该使用任务 `title`（不带时间），而不是任务 `task_id` 
+- [ ] **feat**: `issue-condidates.jsonl` 应该直接在 `.hotpot` 下，而不是某个用户目录下，因为这是属于全局的错误记录
+- [ ] **bug**: 启动 `hotpot-execute` 时出现了报错：`Unknown agent type: hotpot-executionן codex-result-7fc55d31-78d6-4a0a-826a-4d89ca5387d3 is not a valid agent type` 
+- [ ] **bug**: 经常会出现 `API` 错误或者 `"Concurrency limit exceeded for user, please retry later"` 类型的错误
+- [ ] **feat**: `hotpot:finish-work` 流程太长，看是否能合并一些问题和操作
 
 ## 测试部署
 

@@ -9,7 +9,7 @@ enabled for the current project.
 ### Step 1 — Confirm the task file follows VuePress markdown conventions
 
 Before you wrote the task `.md` file, you should already have read
-`.hotpot/prompts/vuepress-style.md` (per the env-gate in
+`.hotpot/prompts/vuepress-style.md` (per the file-existence gate in
 `.hotpot/prompts/hotpot-new.md`) and applied its conventions. If you
 skipped that step, stop here and re-read `vuepress-style.md` now — the
 task file must render correctly in VuePress without breaking the

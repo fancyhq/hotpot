@@ -266,12 +266,15 @@ pub fn vuepress_hub_paths() -> impl Iterator<Item = &'static str> {
 ///
 /// Keeping these assets **out** of [`SHARED_ASSETS`] is what guarantees
 /// disabled projects have a clean prompt directory with no VuePress
-/// references in the AI's context. The env-gate in `hotpot-new.md`
-/// relies on this absence to keep the disabled branch silent.
+/// references in the AI's context. The file-existence gate in
+/// `hotpot-new.md` relies on this absence to keep the disabled branch
+/// silent: when both files are missing, the AI's Bash probe returns
+/// `disabled` and the VuePress section is skipped.
 ///
 /// 仅启用 VuePress 时安装 opt-in prompt 资产到 `.hotpot/prompts/`。
 /// 通过这种 opt-in 安排，禁用项目里 `.hotpot/prompts/` 不含任何
-/// vuepress 相关文件，`hotpot-new.md` 的 env-gate 不会触发误导加载。
+/// vuepress 相关文件，`hotpot-new.md` 的 file-existence gate 探测到
+/// 文件不在盘上即返回 `disabled`，自然跳过 VuePress 段。
 pub fn install_vuepress_prompts(
     project_dir: &Path,
     force: bool,

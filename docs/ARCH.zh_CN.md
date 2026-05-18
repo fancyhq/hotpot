@@ -108,7 +108,7 @@ VuePress 是 **opt-in**：禁用项目里**不会**出现 VuePress 相关 prompt
 | 类别 | 来源 | 安装时机 | 用途 |
 |---|---|---|---|
 | 共享资产 | `SHARED_ASSETS`（`src/assets/shared.rs`） | 每次 `hotpot init` | 跨平台 prompt（output-language、tdd-protocol、hotpot-new/execute/finish-work 等）。 |
-| VuePress opt-in prompts | `VUEPRESS_OPT_IN_ASSETS`（`src/assets/vuepress_opt_in.rs`） | 仅 `hotpot vuepress install` | `vuepress.md`（收尾流程）+ `vuepress-style.md`（markdown 写作规范）。`hotpot-new.md` 的 env-gate 只在 `$HOTPOT_VUEPRESS_ENABLED == "true"` 时 Read 它们；禁用项目里磁盘上没有这两份文件，AI 上下文自然清洁。 |
+| VuePress opt-in prompts | `VUEPRESS_OPT_IN_ASSETS`（`src/assets/vuepress_opt_in.rs`） | 仅 `hotpot vuepress install` | `vuepress.md`（收尾流程）+ `vuepress-style.md`（markdown 写作规范）。`hotpot-new.md` 的 file-existence gate 只在这两份文件都在盘上时 Read 它们——而它们在盘上恰好等价于 VuePress 已安装（由 `hotpot vuepress install` / `uninstall` 维护的原子状态）。四个平台都靠 Bash `test -f` 直接观测，所以 OpenCode（其插件不把 `HOTPOT_VUEPRESS_ENABLED` 推进 AI 对话）也能跟 Claude / Codex / Pi 走同样的分支。 |
 | VuePress hub 项目 | `VUEPRESS_HUB_ASSETS`（`src/assets/vuepress_hub.rs`） | 仅 `hotpot vuepress install` | `.hotpot-hub/` 内 `package.json`、`pnpm-lock.yaml`、`docs/README.md` 以及**五份 `.vuepress/` 文件**（`config.js` / `client.js` / `sidebar.js` / `styles/index.scss` / `components/TaskIndex.vue`）。前四份是紧密耦合的运行时文件（`config.js` ↔ `client.js` ↔ `sidebar.js` ↔ `TaskIndex.vue` 通过编译期 `__HOTPOT_TASK_INDEX__` 注入串联）；`styles/index.scss` 是**独立装饰层**，由 `@vuepress/theme-default` 通过 `styles/index.scss` 约定自动加载——可安全编辑或删除，不会破坏首页 TaskIndex 注入链。真正的 `pnpm install` + `sync_tasks_links`（幂等：清掉 stale 链、为新用户建链、保留已有链）由 `vuepress::install_hub` 编排，不由资产引擎完成。 |
 
 ### 服务生命周期——三层防护

@@ -267,11 +267,15 @@ fn print_shell_exports(context: &Context) {
         "export HOTPOT_FINISH_WORK_PROMPT='{}'",
         shell_quote(&context.finish_work_prompt)
     );
-    // VuePress trio: `HOTPOT_VUEPRESS_ENABLED` is always exported (the prompt
-    // env-gate needs a deterministic value); port/url are exported only when
-    // enabled to avoid leaking stale state from disabled projects.
-    // VuePress 三件套：enabled 始终 export（prompt env-gate 需要确定值）；
-    // port/url 仅启用时 export，避免禁用项目残留状态泄漏。
+    // VuePress trio: `HOTPOT_VUEPRESS_ENABLED` is always exported as the
+    // public hook / bootstrap contract field (the AI's branch decision is
+    // driven by the prompt file-existence gate in `hotpot-new.md`, not by
+    // this env-var); port/url are exported only when enabled to avoid
+    // leaking stale state from disabled projects.
+    // VuePress 三件套：enabled 始终 export 作为 hook / bootstrap 公共契约
+    // 字段（AI 分支由 `hotpot-new.md` 的 prompt file-existence gate 决定，
+    // 不再依赖该 env-var）；port/url 仅启用时 export，避免禁用项目残留状态
+    // 泄漏。
     println!(
         "export HOTPOT_VUEPRESS_ENABLED='{}'",
         shell_quote(&context.vuepress_enabled)

@@ -496,12 +496,22 @@ The task file must be useful on its own for an execution sub-agent. Include enou
 
 ## Optional: VuePress Integration
 
-If `$HOTPOT_VUEPRESS_ENABLED == "true"`:
+Do NOT rely on any VuePress-related env-var to decide this branch — such variables are not propagated into AI conversation context on every platform (OpenCode's plugin only injects them into shell subprocesses via `shell.env`, so the AI never sees them). Instead, use a **file-existence gate** that every platform can observe identically through its Bash tool: probe whether the two VuePress opt-in prompt assets are on disk. They are kept atomically in sync with `[vuepress] enabled = true` by `hotpot vuepress install` / `uninstall`, so "both files exist" is the ground truth for "VuePress is enabled".
+
+Run this probe (via your Bash tool) before deciding whether to follow the VuePress closing flow:
+
+```bash
+[ -f "$ROOT_DIR/.hotpot/prompts/vuepress.md" ] && \
+  [ -f "$ROOT_DIR/.hotpot/prompts/vuepress-style.md" ] && \
+  echo enabled || echo disabled
+```
+
+If the probe prints `enabled`:
 
 1. **BEFORE** you write the task `.md`, use your Read tool to load `.hotpot/prompts/vuepress-style.md` and apply its markdown conventions while writing. The task file must still satisfy every Hotpot structural requirement above (`## Task` / `## Plan` / `## Execution Instructions` / kebab-case slug / etc.) — VuePress conventions are layered ON TOP, not in place of, those requirements.
 2. **AFTER** you have finished writing the task `.md`, use your Read tool to load `.hotpot/prompts/vuepress.md` and follow its closing-flow instructions. Those instructions OVERRIDE the default closing message in the `## Final Response` section below: instead of just emitting the file path, they walk you through a yes/no prompt → `hotpot vuepress start` → URL emission. Treat `vuepress.md` as the authoritative closing protocol whenever VuePress is enabled.
 
-If `$HOTPOT_VUEPRESS_ENABLED != "true"`, ignore this entire section. Do not Read `vuepress.md` or `vuepress-style.md` (they may not exist on disk in disabled projects). Use the default closing message from `## Final Response` below.
+If the probe prints `disabled`, ignore this entire section. Do NOT Read `vuepress.md` or `vuepress-style.md` — they are not on disk in disabled projects, and a blind Read would return "File not found" and pollute your context. Use the default closing message from `## Final Response` below.
 
 ## Final Response
 

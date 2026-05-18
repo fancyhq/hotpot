@@ -91,14 +91,23 @@ pub struct Context {
     #[serde(rename = "HOTPOT_FINISH_WORK_PROMPT")]
     pub finish_work_prompt: String,
 
-    /// VuePress 启用开关，作为 AI 走收尾分支的门控。
+    /// VuePress 启用开关，作为 hook / bootstrap 公共契约字段。
     ///
-    /// Always serialized (`"true"` or `"false"`) so the prompt env-gate in
-    /// `hotpot-new.md` has a deterministic value to test. Pulled from
-    /// [`resolve_vuepress_enabled`]; never empty.
+    /// Always serialized (`"true"` or `"false"`) as the public hook /
+    /// bootstrap contract requires. **No longer used as the AI gate**:
+    /// the prompt file-existence gate in `hotpot-new.md` probes
+    /// `.hotpot/prompts/vuepress*.md` directly via Bash `test -f` so that
+    /// every platform observes the same ground truth (OpenCode's plugin
+    /// only injects this env-var into shell subprocesses via
+    /// `shell.env` and never surfaces it into AI conversation context).
+    /// Pulled from [`resolve_vuepress_enabled`]; never empty.
     ///
-    /// 始终输出 `"true"` 或 `"false"`，让 `hotpot-new.md` 的 env-gate
-    /// 块有确定值可判。
+    /// 始终输出 `"true"` 或 `"false"`，作为 hook / bootstrap 公共契约
+    /// 字段。**不再用作 AI 闸门**：`hotpot-new.md` 的 prompt
+    /// file-existence gate 通过 Bash `test -f` 直接探测
+    /// `.hotpot/prompts/vuepress*.md`，四个平台观察值一致（OpenCode
+    /// 插件只把这个 env-var 经 `shell.env` 注入 shell 子进程，AI 对话
+    /// 上下文里看不到它）。
     #[serde(rename = "HOTPOT_VUEPRESS_ENABLED")]
     pub vuepress_enabled: String,
 
@@ -678,14 +687,17 @@ fn build_context(root_dir: String) -> Result<Context> {
     let execute_prompt = path_to_agent_string(&prompt_path(&root_dir, "hotpot-execute.md"));
     let finish_work_prompt = path_to_agent_string(&prompt_path(&root_dir, "hotpot-finish-work.md"));
 
-    // VuePress 三字段：enabled 始终输出（AI 据此走分支），port/url 仅启用
-    // 态填充——禁用时为空串以触发 `skip_serializing_if`，从 JSON 中省略，
-    // 防止下游把陈旧端口当成活动状态。
+    // VuePress 三字段：enabled 始终输出作为 hook / bootstrap 公共契约字段
+    // （AI 实际走分支用的是 hotpot-new.md 里的 file-existence gate，不再依
+    // 赖该 env-var），port/url 仅启用态填充——禁用时为空串以触发
+    // `skip_serializing_if`，从 JSON 中省略，防止下游把陈旧端口当成活动状态。
     //
-    // VuePress trio: `enabled` is always serialized so the prompt env-gate
-    // has a deterministic value to test; `port`/`url` are populated only
-    // when enabled, otherwise left empty so `skip_serializing_if` drops
-    // them — preventing stale values from being treated as live.
+    // VuePress trio: `enabled` is always serialized as the public hook /
+    // bootstrap contract field — the AI's actual branch decision is now
+    // driven by the prompt file-existence gate in `hotpot-new.md`, not by
+    // this env-var. `port`/`url` are populated only when enabled,
+    // otherwise left empty so `skip_serializing_if` drops them —
+    // preventing stale values from being treated as live.
     let vuepress_enabled_bool = resolve_vuepress_enabled(&root_dir);
     let vuepress_enabled = if vuepress_enabled_bool { "true" } else { "false" }.to_string();
     let (vuepress_port, vuepress_url) = if vuepress_enabled_bool {

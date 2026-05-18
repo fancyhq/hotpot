@@ -38,10 +38,10 @@ in the project language):
 2. Parse its stdout — a single line of JSON like
    `{"url": "http://localhost:8080", "pid": 12345}`.
 3. The browse URL for the just-created task is:
-   `<url>/<HOTPOT_USERNAME>/<task-slug>`
-   where `<task-slug>` is the kebab-case slug between the date prefix
-   and the `.md` extension in the task filename. Example:
-   `2026-05-17-add-vuepress-link.md` → slug `add-vuepress-link`.
+   `<url>/<HOTPOT_USERNAME>/<task-file-stem>`
+   where `<task-file-stem>` is the full task filename with only the
+   `.md` extension removed. Example:
+   `2025-03-02-mock-task.md` → task file stem `2025-03-02-mock-task`.
 4. Output to the user:
    `Browse the task at <full-url>. When you are done, run /hotpot:execute
    to continue — the server will be stopped automatically.`

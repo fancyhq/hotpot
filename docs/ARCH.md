@@ -56,7 +56,7 @@ User-facing commands. Slash commands are AI workflows; CLI subcommands are state
 | `hotpot vuepress {install,uninstall,start,stop,status}` | Manage the opt-in VuePress integration. `install` deploys `.hotpot-hub/` + `pnpm install` + opt-in prompts + flips `[vuepress] enabled = true`. `uninstall` reverses everything. `start` / `stop` / `status` manage the `pnpm docs:dev` process via `.hotpot-hub/vuepress.runtime.json`. See **VuePress Integration** below. |
 | `/hotpot:new` | Brainstorm → approve design → `hotpot task create [--switch\|--inactive]` → write the handoff task file. When VuePress is enabled, the closing flow additionally prompts the user to open the task in a browser and runs `hotpot vuepress start`. No code modifications during `new`. |
 | `/hotpot:execute` | Pre-flight `hotpot vuepress stop --if-running` (releases any dev server started by `/hotpot:new`) → resolve active task → run execution subagent → collect diff and relevant memory → run read-only review subagent → fix loop (≤ 2 rounds) → buffer issue candidates → ask user which to keep → write approved candidates via `hotpot issues candidate add`. |
-| `/hotpot:finish-work` | Confirm completion → summarize candidates → user-approve promotion → `hotpot issues promote` → `hotpot issues candidate clear` → optional git commit → `hotpot task done [--commit <SHA>]` → optional switch-and-continue to another in-progress task. |
+| `/hotpot:finish-work` | Confirm completion → summarize candidates → user-approve promotion → `hotpot issues promote` → `hotpot issues candidate clear` → optional git commit → `hotpot task done [--commit <SHA>]` → when finish-work created the task commit, auto-commit the task-done ledger diff as `chore: record task Done` → optional switch-and-continue to another in-progress task. |
 
 Platform-specific surfaces:
 
@@ -76,6 +76,7 @@ new → task file written → execute → execution subagent
 finish-work → summarize candidates → user approves promotion
             → promote to issues.jsonl → clear candidates
             → optional git commit → mark task Done [+ SHA]
+            → auto commit task-done ledger diff when task commit was automatic
             → optional switch to next In-Progress task → run execution only
 ```
 

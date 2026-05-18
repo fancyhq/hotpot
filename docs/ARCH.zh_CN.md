@@ -56,7 +56,7 @@ slash 命令是 AI 工作流；CLI 子命令是状态和资源管理。
 | `hotpot vuepress {install,uninstall,start,stop,status}` | 管理 opt-in VuePress 集成。`install` 部署 `.hotpot-hub/` + `pnpm install` + opt-in prompts + 翻 `[vuepress] enabled = true`；`uninstall` 反向回滚；`start`/`stop`/`status` 通过 `.hotpot-hub/vuepress.runtime.json` 管理 `pnpm docs:dev` 进程。详见 **VuePress 集成**。 |
 | `/hotpot:new` | 头脑风暴 → 用户批准设计 → `hotpot task create [--switch\|--inactive]` → 写入 handoff 任务文件。启用 VuePress 时收尾流程额外询问用户是否在浏览器查看并跑 `hotpot vuepress start`。new 阶段不改业务代码。 |
 | `/hotpot:execute` | 入口跑 `hotpot vuepress stop --if-running` 释放 `/hotpot:new` 可能启动的 dev server → 取活动任务 → 调起执行子代理 → 收集 diff 与相关记忆 → 调起只读 review 子代理 → 修复循环（≤ 2 轮）→ 缓冲 issue 候选 → 让用户挑选保留范围 → 通过 `hotpot issues candidate add` 落盘。 |
-| `/hotpot:finish-work` | 确认完成 → 汇总候选 → 用户批准晋升 → `hotpot issues promote` → `hotpot issues candidate clear` → 可选 git commit → `hotpot task done [--commit <SHA>]` → 可选切换并续作下一条 In-Progress 任务。 |
+| `/hotpot:finish-work` | 确认完成 → 汇总候选 → 用户批准晋升 → `hotpot issues promote` → `hotpot issues candidate clear` → 可选 git commit → `hotpot task done [--commit <SHA>]` → 当 task commit 由 finish-work 自动创建时，自动把 task-done ledger diff 提交为 `chore: record task Done` → 可选切换并续作下一条 In-Progress 任务。 |
 
 各平台具体承载方式：
 
@@ -76,6 +76,7 @@ new → 任务文件写好 → execute → 执行子代理
 finish-work → 汇总候选 → 用户批准晋升
             → 写入 issues.jsonl → 清空候选
             → 可选 git commit → 标记任务 Done [+ SHA]
+            → task commit 为自动创建时，自动提交 task-done ledger diff
             → 可选切换到下一条 In-Progress 任务 → 只跑执行阶段
 ```
 

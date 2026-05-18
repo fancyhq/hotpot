@@ -19,9 +19,10 @@ Close the Hotpot loop for the active task:
 3. Read temporary review-memory candidates, summarize them with `@.hotpot/prompts/summarize-issue-candidates.md`, ask the user to approve the `{promoted, discarded, merged}` proposal, then promote and clear.
 4. If the project is a git repository, offer to create a commit for the task; on user approval, build a Conventional-Commits-style message, run `git commit`, and capture the resulting SHA.
 5. Mark the task as `Done` and (when a commit was created) backfill the `commit` hash.
-6. Report a single concise summary to the user.
+6. If finish-work automatically created the task commit, automatically commit the task-done ledger diff with subject `chore: record task Done`.
+7. Report a single concise summary to the user.
 
-Do not silently write to `.hotpot/issues.jsonl`. Do not stage or commit files without explicit user confirmation. Do not mark the task `Done` until the previous steps succeed or are explicitly skipped.
+Do not silently write to `.hotpot/issues.jsonl`. Do not stage or commit task files without explicit user confirmation. Do not mark the task `Done` until the previous steps succeed or are explicitly skipped. The task-done ledger commit is the only exception to the second confirmation rule: when the user already approved finish-work's automatic task commit, that approval also covers the follow-up ledger-record commit described below.
 
 ## Output Language
 
@@ -53,8 +54,9 @@ The active task `.md` MUST already exist on disk before this command runs. If `R
 8. Detect git availability. If available, offer to create a commit (inside the worktree when attached). On approval, stage task-related files, build the message, run `git commit`, and capture the resulting SHA.
 9. If a worktree is attached, ask the user how to dispose of it: merge into the base branch / keep the branch / discard. Execute the choice (using `hotpot worktree remove`).
 10. Mark the task `Done` via `hotpot task done [--commit <SHA>]`. The SHA captured in step 8 is always the worktree-branch SHA — keep it honest regardless of the disposal choice.
-11. Offer to switch to a remaining `In Progress` task and continue executing it inside the same session.
-12. Report the final state.
+11. If step 8 produced a commit through finish-work's automatic commit path, automatically commit any task-done ledger diff created by step 10. If the user skipped the commit or chose `I already committed manually — please use my HEAD as the task commit`, skip this ledger commit.
+12. Offer to switch to a remaining `In Progress` task and continue executing it inside the same session.
+13. Report the final state.
 
 ## Probe Attached Worktree
 
@@ -358,6 +360,40 @@ The command prints the updated `TaskInfo` row as JSON. Verify the JSON shows `"s
 
 If `hotpot task done` errors (e.g. cancelled task, missing task id, commit mismatch), surface the error to the user and stop. Do not retry blindly.
 
+## Auto-Commit Task-Done Ledger Diff
+
+Run this section only when all of these are true:
+
+1. The user chose `Yes, commit task-related files now` in **Optional Git Commit**.
+2. The automatic task commit succeeded and produced the `<SHA>` passed to `hotpot task done --commit <SHA>`.
+3. `hotpot task done` succeeded and verified `"status":"Done"` and `"active":false`.
+
+Skip this section when the user skipped the task commit, chose `I already committed manually — please use my HEAD as the task commit`, or when no commit SHA was passed to `hotpot task done`.
+
+The ledger-record commit runs in the main repository after **Worktree Disposal** has completed. If a worktree was attached, never run these git commands inside `<worktree-path>` after `hotpot worktree remove`; that directory may no longer exist, and the Hotpot workspace ledger belongs to the main repository.
+
+Derive the workspace ledger path from the active task path returned earlier (`.hotpot/workspaces/<username>/tasks/<file>.md` → `.hotpot/workspaces/<username>/overview.jsonl`) or from the `TaskInfo` JSON emitted by `hotpot task done` if it exposes enough path context. Treat the derived path as `<overview-jsonl-path>`.
+
+Check whether task-done wrote an uncommitted ledger diff:
+
+```bash
+git status --porcelain -- <overview-jsonl-path>
+```
+
+If stdout is empty, skip cleanly: the task-done ledger change may already be included in an earlier user-approved commit, or no tracked diff remains.
+
+If stdout is non-empty, stage only that ledger file and commit it with the fixed subject:
+
+```bash
+git add -- <overview-jsonl-path>
+git commit -m "chore: record task Done"
+git rev-parse HEAD
+```
+
+Never stage any other file in this section. Never use `git add -A`, `git commit -a`, or a broad path such as `.hotpot/`. Capture the resulting ledger-record commit SHA for the final response.
+
+If this commit fails, do not roll back `hotpot task done` or the task commit. Preserve the stderr for the user, continue to the final response when possible, and list the ledger-record commit failure as a leftover blocker.
+
 ## Offer to Resume Next Task
 
 After `hotpot task done` (or `hotpot task cancel`) succeeds and before the final response, check whether the workspace has any tasks that are still open, and offer to continue with one of them inside this session.
@@ -398,10 +434,11 @@ After `hotpot task done` (or `hotpot task cancel`) succeeds and before the final
 Respond with one concise summary block:
 
 - Task title and final status (`Done`).
-- Task id and commit hash if any.
+- Task id, task commit hash if any, and ledger-record commit hash if any.
 - Promoted count, discarded count, merged count from the candidate flow.
 - Whether candidates were cleared.
-- Whether a git commit was created, and the subject line.
+- Whether a task git commit was created, and the subject line.
+- Whether a ledger-record commit was created or skipped, including `chore: record task Done` and its SHA when present.
 - Resumed task (if any) plus its execution outcome.
 - Any leftover blockers (e.g. pre-commit hook failure, candidates failed to clear).
 
@@ -422,3 +459,6 @@ Keep the response factual. Do not restate the entire `## Task` section.
 - Never run the review phase, the fix loop, or the candidate-recording step inside the resume bridge; those remain the execute flow's job.
 - Never silently pick a worktree disposal option. The user must choose merge / keep-branch / discard explicitly before `hotpot worktree remove` runs.
 - The SHA passed to `hotpot task done --commit <SHA>` is always the commit made on `hotpot/<task-id>`, even when the user chose "merge to base". Recording the worktree-branch SHA keeps the task ledger honest about what work was actually done.
+- When finish-work automatically creates the task commit, that confirmation also authorizes the follow-up task-done ledger commit; do not ask for a second confirmation before committing `overview.jsonl` with `chore: record task Done`.
+- The automatic ledger-record commit may stage only the derived Hotpot workspace `overview.jsonl` path. It must not stage issue promotion, candidate cleanup, task work files, or unrelated user changes.
+- The ledger-record commit SHA is separate from the task commit SHA and must never replace the SHA passed to `hotpot task done --commit <SHA>`.

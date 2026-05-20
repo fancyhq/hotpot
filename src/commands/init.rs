@@ -65,7 +65,8 @@ pub fn init(args: InitArgs) -> Result<()> {
     // Prefer `dunce::canonicalize` so the resulting absolute path never
     // carries the Windows `\\?\` verbatim prefix; keeps init output in
     // sync with the cleaned paths emitted by `hotpot hook bootstrap`.
-    let project_dir = dunce::canonicalize(&args.project_dir).unwrap_or_else(|_| args.project_dir.clone());
+    let project_dir =
+        dunce::canonicalize(&args.project_dir).unwrap_or_else(|_| args.project_dir.clone());
 
     let stats = assets::install_for(&project_dir, args.platform, args.force, args.dry_run, true)?;
 

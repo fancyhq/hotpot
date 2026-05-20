@@ -219,7 +219,8 @@ mod tests {
         let username = "test_create_default_empty";
         reset_workspace(&root_dir, username);
 
-        let new_row = create_task(&root_dir, username, "A", None, CreateMode::Default, false).unwrap();
+        let new_row =
+            create_task(&root_dir, username, "A", None, CreateMode::Default, false).unwrap();
 
         assert!(new_row.active);
         assert_eq!(new_row.status, TaskStatus::InProgress);
@@ -238,7 +239,8 @@ mod tests {
         reset_workspace(&root_dir, username);
 
         // 先建一个 In-Progress active 任务。
-        let first = create_task(&root_dir, username, "A", None, CreateMode::Default, false).unwrap();
+        let first =
+            create_task(&root_dir, username, "A", None, CreateMode::Default, false).unwrap();
 
         let before = fs::read_to_string(overview_file_path(&root_dir, username)).unwrap();
 
@@ -262,8 +264,10 @@ mod tests {
         let username = "test_create_switch";
         reset_workspace(&root_dir, username);
 
-        let first = create_task(&root_dir, username, "A", None, CreateMode::Default, false).unwrap();
-        let second = create_task(&root_dir, username, "B", None, CreateMode::Switch, false).unwrap();
+        let first =
+            create_task(&root_dir, username, "A", None, CreateMode::Default, false).unwrap();
+        let second =
+            create_task(&root_dir, username, "B", None, CreateMode::Switch, false).unwrap();
 
         assert!(second.active);
         let list = get_task_list(&root_dir, username).unwrap();
@@ -287,8 +291,10 @@ mod tests {
         let username = "test_create_inactive";
         reset_workspace(&root_dir, username);
 
-        let first = create_task(&root_dir, username, "A", None, CreateMode::Default, false).unwrap();
-        let second = create_task(&root_dir, username, "B", None, CreateMode::Inactive, false).unwrap();
+        let first =
+            create_task(&root_dir, username, "A", None, CreateMode::Default, false).unwrap();
+        let second =
+            create_task(&root_dir, username, "B", None, CreateMode::Inactive, false).unwrap();
 
         assert!(!second.active, "Inactive 模式新行应 active=false");
         let list = get_task_list(&root_dir, username).unwrap();
@@ -305,7 +311,15 @@ mod tests {
         let username = "test_create_clear_stale";
         reset_workspace(&root_dir, username);
 
-        let stale = create_task(&root_dir, username, "stale", None, CreateMode::Default, false).unwrap();
+        let stale = create_task(
+            &root_dir,
+            username,
+            "stale",
+            None,
+            CreateMode::Default,
+            false,
+        )
+        .unwrap();
         // 把 stale 标 Done（active 会被清零），再手工把 active 改回 true 模拟陈旧。
         let _ = mark_task_done(&root_dir, username, Some(&stale.task_id), None).unwrap();
         rewrite_overview_with(&root_dir, username, |t| {
@@ -316,8 +330,15 @@ mod tests {
         .unwrap();
 
         // 此时 stale 是 active=true && status=Done；Default 应静默清掉它。
-        let new_row =
-            create_task(&root_dir, username, "fresh", None, CreateMode::Default, false).unwrap();
+        let new_row = create_task(
+            &root_dir,
+            username,
+            "fresh",
+            None,
+            CreateMode::Default,
+            false,
+        )
+        .unwrap();
 
         assert!(new_row.active);
         let list = get_task_list(&root_dir, username).unwrap();
@@ -339,7 +360,15 @@ mod tests {
         reset_workspace(&root_dir, username);
 
         // 第一条：Default 建后 done，再手工制造陈旧 active=true && status=Done。
-        let stale = create_task(&root_dir, username, "stale", None, CreateMode::Default, false).unwrap();
+        let stale = create_task(
+            &root_dir,
+            username,
+            "stale",
+            None,
+            CreateMode::Default,
+            false,
+        )
+        .unwrap();
         let _ = mark_task_done(&root_dir, username, Some(&stale.task_id), None).unwrap();
         rewrite_overview_with(&root_dir, username, |t| {
             if t.task_id == stale.task_id {
@@ -348,7 +377,15 @@ mod tests {
         })
         .unwrap();
         // 第二条：Default 建一个真 In-Progress active。
-        let live = create_task(&root_dir, username, "live", None, CreateMode::Default, false).unwrap();
+        let live = create_task(
+            &root_dir,
+            username,
+            "live",
+            None,
+            CreateMode::Default,
+            false,
+        )
+        .unwrap();
         // 第二条创建时已经把 stale 清了；为模拟方案中的"同时存在"场景，再次手工注入陈旧。
         rewrite_overview_with(&root_dir, username, |t| {
             if t.task_id == stale.task_id {
@@ -357,13 +394,24 @@ mod tests {
         })
         .unwrap();
 
-        let new_row =
-            create_task(&root_dir, username, "side", None, CreateMode::Inactive, false).unwrap();
+        let new_row = create_task(
+            &root_dir,
+            username,
+            "side",
+            None,
+            CreateMode::Inactive,
+            false,
+        )
+        .unwrap();
 
         assert!(!new_row.active);
         let list = get_task_list(&root_dir, username).unwrap();
         let actives: Vec<&TaskInfo> = list.iter().filter(|t| t.active).collect();
-        assert_eq!(actives.len(), 1, "Inactive 应保留 In-Progress active，陈旧应被清");
+        assert_eq!(
+            actives.len(),
+            1,
+            "Inactive 应保留 In-Progress active，陈旧应被清"
+        );
         assert_eq!(actives[0].task_id, live.task_id);
 
         let stale_after = list.iter().find(|t| t.task_id == stale.task_id).unwrap();
@@ -449,8 +497,7 @@ mod tests {
             std::env::remove_var("HOTPOT_ALLOW_DEFAULT_USERNAME");
         }
 
-        let _ =
-            create_task(&root_dir, "default", "A", None, CreateMode::Default, false).unwrap();
+        let _ = create_task(&root_dir, "default", "A", None, CreateMode::Default, false).unwrap();
 
         // 用 Switch 模式 + allow_default=true：协作者守卫与 mode 守卫都让路。
         let second = create_task(
@@ -467,9 +514,8 @@ mod tests {
         // Default 模式 + allow_default=true 仍应被 Tier-2 mode 守卫拦下，
         // 验证两条守卫互不耦合。
         // Default mode + allow_default=true still hits the tier-2 mode guard.
-        let mode_err =
-            create_task(&root_dir, "default", "C", None, CreateMode::Default, true)
-                .expect_err("tier-2 guard still applies");
+        let mode_err = create_task(&root_dir, "default", "C", None, CreateMode::Default, true)
+            .expect_err("tier-2 guard still applies");
         assert!(
             format!("{mode_err}").starts_with("ACTIVE_CONFLICT:"),
             "tier-2 guard should still bail: {mode_err}"
@@ -486,8 +532,7 @@ mod tests {
     fn test_create_default_username_env_bypass_equivalent_to_flag() {
         let _guard = env_lock();
         let root_dir = make_isolated_project_dir("collab-env-bypass");
-        let _ =
-            create_task(&root_dir, "default", "A", None, CreateMode::Default, false).unwrap();
+        let _ = create_task(&root_dir, "default", "A", None, CreateMode::Default, false).unwrap();
 
         // SAFETY: env mutation guarded by env_lock(); 2024 edition flags
         // std::env::set_var/remove_var as unsafe due to global state.
@@ -561,8 +606,15 @@ mod tests {
         // 看到一条 In-Progress active 才不退化为 Default）。
         // Seed an active In-Progress row so Inactive's "leave live active
         // alone" branch is exercised.
-        let _ =
-            create_task(&root_dir, username, "seed", None, CreateMode::Default, false).unwrap();
+        let _ = create_task(
+            &root_dir,
+            username,
+            "seed",
+            None,
+            CreateMode::Default,
+            false,
+        )
+        .unwrap();
 
         const THREADS: u32 = 6;
         let handles: Vec<_> = (0..THREADS)

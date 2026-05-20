@@ -183,11 +183,7 @@ fn branch_for(task_id: &str) -> String {
 /// 4. 在项目根执行 `git worktree add -b hotpot/<id> <path>`。
 /// 5. 调 [`task::attach_worktree`] 落盘。失败时尽力 `git worktree remove
 ///    --force <path>` 回滚，避免遗留半挂载状态。
-pub fn create_worktree(
-    root_dir: &str,
-    username: &str,
-    task_id: &str,
-) -> Result<WorktreeInfo> {
+pub fn create_worktree(root_dir: &str, username: &str, task_id: &str) -> Result<WorktreeInfo> {
     let task_row = task::get_task_by_id(root_dir, username, task_id)?
         .ok_or_else(|| anyhow::anyhow!("未找到 task_id = {task_id} 的任务"))?;
 
@@ -222,7 +218,14 @@ pub fn create_worktree(
     }
 
     let path_str = target_path.display().to_string();
-    match task::attach_worktree(root_dir, username, task_id, &path_str, &branch, &base_branch) {
+    match task::attach_worktree(
+        root_dir,
+        username,
+        task_id,
+        &path_str,
+        &branch,
+        &base_branch,
+    ) {
         Ok(_) => Ok(WorktreeInfo {
             task_id: task_row.task_id,
             title: task_row.title,
@@ -296,11 +299,15 @@ pub fn remove_worktree(
 
     // Prefer stored values; fall back to canonical defaults if user-edited.
     // 优先取存盘值；用户改过台账时回退到规约默认值，确保仍可清理。
-    let path = task_row
-        .worktree_path
+    let path = task_row.worktree_path.clone().unwrap_or_else(|| {
+        worktree_path_for(root_dir, task_id)
+            .map(|p| p.display().to_string())
+            .unwrap_or_default()
+    });
+    let branch = task_row
+        .worktree_branch
         .clone()
-        .unwrap_or_else(|| worktree_path_for(root_dir, task_id).map(|p| p.display().to_string()).unwrap_or_default());
-    let branch = task_row.worktree_branch.clone().unwrap_or_else(|| branch_for(task_id));
+        .unwrap_or_else(|| branch_for(task_id));
     let toplevel = git_toplevel(root_dir);
 
     if !path.is_empty() {
@@ -362,11 +369,7 @@ pub fn list_attached(root_dir: &str, username: &str) -> Result<Vec<WorktreeInfo>
 /// the task is unattached or missing.
 ///
 /// 返回指定任务挂载的 worktree 元信息；任务不存在或未挂载时返回 `None`。
-pub fn get_attached(
-    root_dir: &str,
-    username: &str,
-    task_id: &str,
-) -> Result<Option<WorktreeInfo>> {
+pub fn get_attached(root_dir: &str, username: &str, task_id: &str) -> Result<Option<WorktreeInfo>> {
     let Some(t) = task::get_task_by_id(root_dir, username, task_id)? else {
         return Ok(None);
     };

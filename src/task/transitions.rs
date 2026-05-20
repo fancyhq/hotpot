@@ -75,7 +75,9 @@ pub fn mark_task_done(
     commit: Option<&str>,
 ) -> Result<TaskInfo> {
     let overview = overview_file_path(root_dir, username);
-    with_file_lock(&overview, || mark_task_done_locked(root_dir, username, task_id, commit))
+    with_file_lock(&overview, || {
+        mark_task_done_locked(root_dir, username, task_id, commit)
+    })
 }
 
 /// Locked-body of [`mark_task_done`]. The outer wrapper holds the advisory
@@ -214,7 +216,9 @@ pub fn mark_task_cancelled(
     task_id: Option<&str>,
 ) -> Result<TaskInfo> {
     let overview = overview_file_path(root_dir, username);
-    with_file_lock(&overview, || mark_task_cancelled_locked(root_dir, username, task_id))
+    with_file_lock(&overview, || {
+        mark_task_cancelled_locked(root_dir, username, task_id)
+    })
 }
 
 /// Locked body of [`mark_task_cancelled`]. See [`mark_task_done_locked`].
@@ -419,7 +423,9 @@ fn attach_worktree_locked(
 /// 持锁区域**之外**完成 `git worktree remove`，再调用本函数。
 pub fn detach_worktree(root_dir: &str, username: &str, task_id: &str) -> Result<TaskInfo> {
     let overview = overview_file_path(root_dir, username);
-    with_file_lock(&overview, || detach_worktree_locked(root_dir, username, task_id))
+    with_file_lock(&overview, || {
+        detach_worktree_locked(root_dir, username, task_id)
+    })
 }
 
 /// Locked body of [`detach_worktree`]. See [`mark_task_done_locked`].
@@ -510,7 +516,9 @@ fn detach_worktree_locked(root_dir: &str, username: &str, task_id: &str) -> Resu
 /// 不接收 `commit` 参数：resume 只是激活切换，不涉及发货语义。
 pub fn mark_task_resumed(root_dir: &str, username: &str, task_id: &str) -> Result<TaskInfo> {
     let overview = overview_file_path(root_dir, username);
-    with_file_lock(&overview, || mark_task_resumed_locked(root_dir, username, task_id))
+    with_file_lock(&overview, || {
+        mark_task_resumed_locked(root_dir, username, task_id)
+    })
 }
 
 /// Locked body of [`mark_task_resumed`]. See [`mark_task_done_locked`].
@@ -535,10 +543,7 @@ fn mark_task_resumed_locked(root_dir: &str, username: &str, task_id: &str) -> Re
             // Allowed; fall through to the rewrite.
             // 允许 resume，进入下方重写。
         }
-        TaskStatus::Done => bail!(
-            "任务 {id} 已是 Done，无法 resume。",
-            id = current.task_id
-        ),
+        TaskStatus::Done => bail!("任务 {id} 已是 Done，无法 resume。", id = current.task_id),
         TaskStatus::Cancelled => bail!(
             "任务 {id} 已是 Cancelled，无法 resume。",
             id = current.task_id

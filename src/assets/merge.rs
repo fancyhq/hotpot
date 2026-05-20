@@ -110,8 +110,14 @@ pub(super) fn merge_text(existing: &str, hotpot: &str, target_path: &Path) -> Re
     };
 
     // 在已有内容里查所有锚点：>1 对视为异常，避免重写错位。
-    let begin_count = existing.lines().filter(|l| l.trim_start().starts_with(TEXT_BLOCK_BEGIN)).count();
-    let end_count = existing.lines().filter(|l| l.trim_start().starts_with(TEXT_BLOCK_END)).count();
+    let begin_count = existing
+        .lines()
+        .filter(|l| l.trim_start().starts_with(TEXT_BLOCK_BEGIN))
+        .count();
+    let end_count = existing
+        .lines()
+        .filter(|l| l.trim_start().starts_with(TEXT_BLOCK_END))
+        .count();
     if begin_count > 1 || end_count > 1 {
         bail!(
             "{} contains multiple hotpot marker blocks; please clean up manually",
@@ -281,9 +287,7 @@ fn merge_toml_table(dst: &mut Table, src: &Table, path: &mut Vec<String>) {
     for (key, src_item) in src.iter() {
         path.push(key.to_string());
         if dst.contains_key(key) {
-            let dst_item = dst
-                .get_mut(key)
-                .expect("contains_key guarantees presence");
+            let dst_item = dst.get_mut(key).expect("contains_key guarantees presence");
             merge_toml_item(dst_item, src_item, path);
         } else {
             dst.insert(key, src_item.clone());
@@ -463,7 +467,10 @@ mod tests {
     fn toml_codex_preserves_user_comments_and_tables() {
         let existing = "# user-added section\n[model]\ndefault = \"gpt-5\"\n";
         let out = merge_toml(existing, CODEX_HOTPOT, p()).unwrap();
-        assert!(out.contains("# user-added section"), "lost user comment: {out}");
+        assert!(
+            out.contains("# user-added section"),
+            "lost user comment: {out}"
+        );
         assert!(out.contains("[model]"), "lost user [model] table: {out}");
         assert!(out.contains("default = \"gpt-5\""));
         assert!(out.contains("codex_hooks = true"));
@@ -483,8 +490,14 @@ mod tests {
     fn toml_codex_features_key_level_merge() {
         let existing = "[features]\nmy_feature = true\n";
         let out = merge_toml(existing, CODEX_HOTPOT, p()).unwrap();
-        assert!(out.contains("my_feature = true"), "lost user feature: {out}");
-        assert!(out.contains("codex_hooks = true"), "missing hotpot feature: {out}");
+        assert!(
+            out.contains("my_feature = true"),
+            "lost user feature: {out}"
+        );
+        assert!(
+            out.contains("codex_hooks = true"),
+            "missing hotpot feature: {out}"
+        );
     }
 
     // ===== opencode/package.json shape =====
@@ -590,7 +603,10 @@ mod tests {
         // 用户已有内容但无锚点：在末尾追加 hotpot 块，原内容字节不变。
         let existing = "/target\nnode_modules/\n";
         let out = merge_text(existing, GITIGNORE_HOTPOT, p()).unwrap();
-        assert!(out.starts_with("/target\nnode_modules/\n"), "lost user content: {out}");
+        assert!(
+            out.starts_with("/target\nnode_modules/\n"),
+            "lost user content: {out}"
+        );
         assert!(out.contains(TEXT_BLOCK_BEGIN));
         assert!(out.contains(TEXT_BLOCK_END));
         assert!(out.contains("/.hotpot/worktrees/"));
@@ -617,8 +633,14 @@ mod tests {
         let out = merge_text(existing, GITIGNORE_HOTPOT, p()).unwrap();
         assert!(out.starts_with("/target\n"), "user prefix lost: {out}");
         assert!(out.ends_with("/node_modules\n"), "user suffix lost: {out}");
-        assert!(!out.contains("stale_entry_that_should_be_removed"), "stale line not pruned: {out}");
-        assert!(out.contains("/.hotpot/brainstorm/"), "hotpot block missing: {out}");
+        assert!(
+            !out.contains("stale_entry_that_should_be_removed"),
+            "stale line not pruned: {out}"
+        );
+        assert!(
+            out.contains("/.hotpot/brainstorm/"),
+            "hotpot block missing: {out}"
+        );
     }
 
     #[test]
@@ -631,13 +653,13 @@ mod tests {
     #[test]
     fn text_bails_on_multiple_marker_pairs() {
         // 防御：用户手工复制了两份锚点块，必须 bail 而不是错位重写。
-        let existing = format!(
-            "{}{}",
-            GITIGNORE_HOTPOT, GITIGNORE_HOTPOT
-        );
+        let existing = format!("{}{}", GITIGNORE_HOTPOT, GITIGNORE_HOTPOT);
         let err = merge_text(&existing, GITIGNORE_HOTPOT, p()).unwrap_err();
         let msg = format!("{err}");
-        assert!(msg.contains("multiple hotpot marker"), "unexpected error: {msg}");
+        assert!(
+            msg.contains("multiple hotpot marker"),
+            "unexpected error: {msg}"
+        );
     }
 
     #[test]

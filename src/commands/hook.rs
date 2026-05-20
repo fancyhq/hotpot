@@ -402,22 +402,13 @@ fn context_lines(context: &Context) -> Vec<String> {
         // enabled 始终列出，作为 AI 走分支的确定信号；port/url 仅启用时附上。
         // enabled is always listed (the deterministic branch signal for AI);
         // port/url appear only when enabled.
-        format!(
-            "- HOTPOT_VUEPRESS_ENABLED: {}",
-            context.vuepress_enabled
-        ),
+        format!("- HOTPOT_VUEPRESS_ENABLED: {}", context.vuepress_enabled),
     ];
     if !context.vuepress_port.is_empty() {
-        lines.push(format!(
-            "- HOTPOT_VUEPRESS_PORT: {}",
-            context.vuepress_port
-        ));
+        lines.push(format!("- HOTPOT_VUEPRESS_PORT: {}", context.vuepress_port));
     }
     if !context.vuepress_url.is_empty() {
-        lines.push(format!(
-            "- HOTPOT_VUEPRESS_URL: {}",
-            context.vuepress_url
-        ));
+        lines.push(format!("- HOTPOT_VUEPRESS_URL: {}", context.vuepress_url));
     }
     lines
 }
@@ -440,10 +431,7 @@ fn shell_export_assignments(context: &Context) -> String {
             "HOTPOT_SUMMARIZE_ISSUE_CANDIDATES_PROMPT",
             &context.summarize_issue_candidates_prompt,
         ),
-        (
-            "HOTPOT_TDD_PROTOCOL_PROMPT",
-            &context.tdd_protocol_prompt,
-        ),
+        ("HOTPOT_TDD_PROTOCOL_PROMPT", &context.tdd_protocol_prompt),
         ("HOTPOT_NEW_PROMPT", &context.new_prompt),
         ("HOTPOT_EXECUTE_PROMPT", &context.execute_prompt),
         ("HOTPOT_FINISH_WORK_PROMPT", &context.finish_work_prompt),

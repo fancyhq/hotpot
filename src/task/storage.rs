@@ -204,11 +204,7 @@ pub fn get_active_task_filepath(root_dir: &str, username: &str) -> Result<PathBu
 /// 按 task_id 查任务行，未命中返回 `Ok(None)`。
 /// 用于 worktree 相关 CLI 子命令读取 `worktree_*` 字段，避免每个调用方
 /// 都自行遍历列表。返回完整行以便组合取 path / branch / base_branch。
-pub fn get_task_by_id(
-    root_dir: &str,
-    username: &str,
-    task_id: &str,
-) -> Result<Option<TaskInfo>> {
+pub fn get_task_by_id(root_dir: &str, username: &str, task_id: &str) -> Result<Option<TaskInfo>> {
     let task_list = get_task_list(root_dir, username)?;
     Ok(task_list.into_iter().find(|task| task.task_id == task_id))
 }

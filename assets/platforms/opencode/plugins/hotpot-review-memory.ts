@@ -3,7 +3,7 @@
 //
 // This plugin provides tools and environment variables for the temporary issue
 // candidate workflow. During a repair, the agent can write reusable repair
-// memories to `.hotpot/workspaces/{username}/issue-candidates.jsonl`. A later
+// memories to the project-shared `.hotpot/issue-candidates.jsonl`. A later
 // finish-work command can read, summarize, promote, and clear these candidates.
 
 import { execFile } from "child_process";

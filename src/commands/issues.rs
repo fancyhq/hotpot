@@ -22,9 +22,9 @@ pub enum IssuesCommand {
     ///
     /// 从 stdin 读取每行一个 Issue 的 JSONL，批量追加到 `.hotpot/issues.jsonl`。
     Promote,
-    /// Manage temporary issue candidates under the active user workspace.
+    /// Manage project-shared temporary issue candidates.
     ///
-    /// 管理当前用户工作区下的临时 issue 候选 (`issue-candidates.jsonl`)。
+    /// 管理项目级共享的临时 issue 候选 (`.hotpot/issue-candidates.jsonl`)。
     Candidate {
         #[command(subcommand)]
         command: CandidateCommand,
@@ -36,15 +36,15 @@ pub enum IssuesCommand {
 /// 操作临时候选 JSONL 文件的子命令集合。
 #[derive(Subcommand, Debug)]
 pub enum CandidateCommand {
-    /// Print all candidates for the current user as JSONL on stdout.
+    /// Print all project-shared temporary candidates as JSONL on stdout.
     ///
-    /// 把当前用户的全部候选以 JSONL 形式打印到 stdout。
+    /// 把项目级共享的全部临时候选以 JSONL 形式打印到 stdout。
     List,
-    /// Append user-confirmed candidates from stdin JSONL into the current user's
-    /// `issue-candidates.jsonl`.
+    /// Append user-confirmed candidates from stdin JSONL into the project-shared
+    /// `.hotpot/issue-candidates.jsonl`.
     ///
-    /// 从 stdin 按 JSONL 读取已被用户确认的候选，追加到当前用户的
-    /// `issue-candidates.jsonl`。
+    /// 从 stdin 按 JSONL 读取已被用户确认的候选，追加到项目级共享的
+    /// `.hotpot/issue-candidates.jsonl`。
     Add,
     /// Truncate the candidates file after promotion or deliberate discard.
     ///
@@ -144,7 +144,7 @@ pub fn promote_issues() -> Result<()> {
 }
 
 /// Reads user-confirmed issue candidates as JSONL from stdin and appends them
-/// to the current user's `issue-candidates.jsonl`.
+/// to the project-shared `.hotpot/issue-candidates.jsonl`.
 ///
 /// `/hotpot:execute` decides which repairs are worth recording by applying the
 /// `.hotpot/prompts/record-issue-candidate.md` rules, shows the proposed candidates to
@@ -156,12 +156,16 @@ pub fn promote_issues() -> Result<()> {
 /// `{"added": N}` is printed to stdout so the slash command can confirm what
 /// landed.
 ///
-/// 从 stdin 按 JSONL 读取已被用户确认的 issue 候选，逐行追加到当前用户的
-/// `issue-candidates.jsonl`。`/hotpot:execute` 按 `.hotpot/prompts/record-issue-candidate.md`
+/// The resolved username is passed through the existing Rust API for backward
+/// compatibility only; it no longer selects the candidates file path.
+///
+/// 从 stdin 按 JSONL 读取已被用户确认的 issue 候选，逐行追加到项目级共享的
+/// `.hotpot/issue-candidates.jsonl`。`/hotpot:execute` 按 `.hotpot/prompts/record-issue-candidate.md`
 /// 的 When/When-Not 规则筛选候选，展示给用户确认后再把通过的部分通过管道
 /// 传进来。"价值闸"由 prompt 与用户确认承担——这里刻意不做评分或去重，
 /// 只有 serde 层的 schema 校验。空输入显式报错，避免"什么都没做却看起来
-/// 成功"。结束时输出 `{"added": N}` 方便 slash command 核对。
+/// 成功"。结束时输出 `{"added": N}` 方便 slash command 核对。解析出的
+/// username 仅为兼容既有 Rust API 继续透传，不再决定 candidates 文件路径。
 pub fn add_candidates() -> Result<()> {
     let root_dir = context::resolve_root_dir(None)?;
     let username = context::resolve_username(&root_dir)?;
@@ -197,9 +201,9 @@ pub fn add_candidates() -> Result<()> {
     Ok(())
 }
 
-/// Lists the current user's temporary issue candidates as JSONL on stdout.
+/// Lists project-shared temporary issue candidates as JSONL on stdout.
 ///
-/// 把当前用户的临时 issue 候选以 JSONL 形式输出到 stdout。
+/// 把项目级共享的临时 issue 候选以 JSONL 形式输出到 stdout。
 pub fn list_candidates() -> Result<()> {
     let root_dir = context::resolve_root_dir(None)?;
     let username = context::resolve_username(&root_dir)?;
@@ -212,12 +216,12 @@ pub fn list_candidates() -> Result<()> {
     Ok(())
 }
 
-/// Truncates the current user's temporary issue candidates file.
+/// Truncates the project-shared temporary issue candidates file.
 ///
 /// Prints `{"cleared": N}` showing how many candidates were dropped so the
 /// slash command can include the number in its final report.
 ///
-/// 清空当前用户的临时 issue 候选文件。输出 `{"cleared": N}` 给 slash
+/// 清空项目级共享的临时 issue 候选文件。输出 `{"cleared": N}` 给 slash
 /// command，告诉它本次实际清掉了多少条。
 pub fn clear_candidates() -> Result<()> {
     let root_dir = context::resolve_root_dir(None)?;

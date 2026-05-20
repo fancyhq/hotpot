@@ -2,11 +2,11 @@
 
 You are running at the end of a task, such as a future `finish-work` command.
 
-Your job is to summarize temporary issue candidates into long-term review memory candidates. Temporary candidates come from `.hotpot/workspaces/{username}/issue-candidates.jsonl`. Final records must match the schema in `prompts/get-issue.md` and may later be appended to `.hotpot/issues.jsonl` after user confirmation.
+Your job is to summarize temporary issue candidates into long-term review memory candidates. Temporary candidates come from the project-shared `.hotpot/issue-candidates.jsonl`. Final records must match the schema in `prompts/get-issue.md` and may later be appended to `.hotpot/issues.jsonl` after user confirmation.
 
 ## Input You Will Receive
 
-- All temporary issue candidates for the current workspace.
+- All project-shared temporary issue candidates.
 - The final changed files for the task.
 - Extracted change keywords.
 - The final task summary.

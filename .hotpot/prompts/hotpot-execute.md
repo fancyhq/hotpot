@@ -665,7 +665,7 @@ Buffer a candidate only when it matches a "When To Record" rule, for example:
 - the problem involves project conventions, data formats, architecture constraints, UI rules, testing rules, or review rules,
 - the repair can become a concrete future `review_check`.
 
-For each surviving repair, build one JSON object matching the `IssueCandidate` schema defined in `@.hotpot/prompts/record-issue-candidate.md`. **Hold the buffered candidates in memory only — do not write to `.hotpot/workspaces/<user>/issue-candidates.jsonl` yet.**
+For each surviving repair, build one JSON object matching the `IssueCandidate` schema defined in `@.hotpot/prompts/record-issue-candidate.md`. **Hold the buffered candidates in memory only — do not write to `.hotpot/issue-candidates.jsonl` yet.**
 
 If no repair clears the gate, the buffer is empty; proceed to the next section and report `0 candidates proposed` to the user.
 
@@ -701,7 +701,7 @@ cargo run -- issues candidate add
 
 Expect stdout `{"added":N}` where N is the number of candidates written. If the count is unexpected, surface the discrepancy in the final response.
 
-**Constraint:** never write to `.hotpot/workspaces/<user>/issue-candidates.jsonl` (directly or via `hotpot issues candidate add`) before showing candidates to the user and receiving explicit approval. The value gate lives in the prompt and in this user confirmation step — bypassing it pollutes the per-user memory log.
+**Constraint:** never write to `.hotpot/issue-candidates.jsonl` (directly or via `hotpot issues candidate add`) before showing candidates to the user and receiving explicit approval. The value gate lives in the prompt and in this user confirmation step — bypassing it pollutes the project-shared temporary candidates log.
 
 ## Resume After Transient Failure
 

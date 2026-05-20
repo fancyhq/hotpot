@@ -3,7 +3,7 @@
 //! Hotpot 是 CLI 工具，多个调用方（agent / hook / 用户）可能并发触碰同一份
 //! 数据文件：
 //!   - `.hotpot/workspaces/<u>/overview.jsonl`
-//!   - `.hotpot/workspaces/<u>/issue-candidates.jsonl`
+//!   - `.hotpot/issue-candidates.jsonl`（项目级临时候选）
 //!   - `.hotpot/issues.jsonl`（项目级共享）
 //!
 //! 即便单次写入是 tmp+rename 原子的，两个并发写者仍会上演 last-writer-wins。
@@ -243,6 +243,10 @@ mod tests {
         let data = temp_data_path("sidecar");
         with_file_lock(&data, || Ok(())).unwrap();
         let expected = std::path::PathBuf::from(format!("{}.lock", data.display()));
-        assert!(expected.exists(), "lock sidecar not at {}", expected.display());
+        assert!(
+            expected.exists(),
+            "lock sidecar not at {}",
+            expected.display()
+        );
     }
 }

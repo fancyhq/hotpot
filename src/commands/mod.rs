@@ -20,6 +20,35 @@ pub struct HotpotCLI {
     command: Command,
 }
 
+#[cfg(test)]
+mod tests {
+    //! Command help text regression tests.
+    //!
+    //! 命令帮助文案回归测试，防止旧的 per-user candidates 语义重新出现。
+
+    use clap::CommandFactory;
+
+    use super::*;
+
+    #[test]
+    fn issues_help_mentions_project_shared_candidates() {
+        let help = HotpotCLI::command().render_help().to_string();
+
+        assert!(
+            help.contains("promoted issues and project-shared temporary candidates"),
+            "Issues help should describe global candidates, got:\n{help}"
+        );
+        assert!(
+            !help.contains("per-user issue candidates"),
+            "Issues help must not mention per-user candidates:\n{help}"
+        );
+        assert!(
+            !help.contains("当前用户的临时 issue 候选"),
+            "Issues help must not mention current-user candidates:\n{help}"
+        );
+    }
+}
+
 /// Top-level Hotpot subcommands.
 ///
 /// Hotpot 的顶层子命令集合。
@@ -40,9 +69,9 @@ pub enum Command {
         #[command(subcommand)]
         command: hook::HookCommand,
     },
-    /// Manage promoted issues and per-user issue candidates.
+    /// Manage promoted issues and project-shared temporary candidates.
     ///
-    /// 管理已晋升 issue 与当前用户的临时 issue 候选。
+    /// 管理已晋升 issue 与项目级共享的临时 issue 候选。
     Issues {
         #[command(subcommand)]
         command: issues::IssuesCommand,

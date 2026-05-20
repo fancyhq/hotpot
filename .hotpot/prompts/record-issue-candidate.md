@@ -2,7 +2,7 @@
 
 You are deciding whether the current repair should be recorded as a temporary review memory candidate.
 
-Temporary candidates are written to `.hotpot/workspaces/{username}/issue-candidates.jsonl`. They are not long-term review memory yet. Do not write to `.hotpot/issues.jsonl`.
+Temporary candidates are written to the project-shared `.hotpot/issue-candidates.jsonl`. They are not long-term review memory yet. Do not write to `.hotpot/issues.jsonl`.
 
 ## When To Record
 

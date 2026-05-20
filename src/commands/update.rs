@@ -425,7 +425,10 @@ fn render_human(report: &UpdateReport, dry_run: bool) {
     let mode = if dry_run { "(dry-run) " } else { "" };
     println!();
     println!("Hotpot update {mode}— identity & workspace");
-    println!("  username : {} (source: {})", report.username, report.source);
+    println!(
+        "  username : {} (source: {})",
+        report.username, report.source
+    );
     println!(
         "  language : {} (source: {})",
         report.language, report.language_source
@@ -495,7 +498,11 @@ mod tests {
     //!
     //! Integration tests for `hotpot update`. Each test runs in a unique
     //! tempdir so cargo's parallel runner doesn't cross-contaminate state.
-    use std::{env, fs, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
+    use std::{
+        env, fs,
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     use super::*;
 
@@ -554,13 +561,41 @@ mod tests {
 
         assert_eq!(report.username, "alice");
         assert_eq!(report.source, "env");
-        assert!(report.workspace_created, "workspace should be newly created");
+        assert!(
+            report.workspace_created,
+            "workspace should be newly created"
+        );
         assert_eq!(report.refreshed_platforms, vec!["claude".to_string()]);
         // workspace 骨架文件已落地。
         let ws = dir.join(".hotpot/workspaces/alice");
         assert!(ws.join("overview.jsonl").is_file());
-        assert!(ws.join("issue-candidates.jsonl").is_file());
+        assert!(dir.join(".hotpot/issue-candidates.jsonl").is_file());
+        assert!(!ws.join("issue-candidates.jsonl").is_file());
         assert!(ws.join("tasks").is_dir());
+    }
+
+    #[test]
+    fn update_migrates_legacy_workspace_candidates() {
+        let dir = temp_project_dir("legacy-candidates");
+        install_claude_fixture(&dir);
+        let legacy = dir.join(".hotpot/workspaces/alice/issue-candidates.jsonl");
+        fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        fs::write(
+            &legacy,
+            r#"{"created_at":"2026-05-19T00:00:00Z","reason":"legacy update","changed_files":["src/workspace.rs"],"keywords":["migration"],"problem":"update skipped legacy candidates","fix":"reuse shared candidate ensure","validation":["cargo test commands::update::tests"],"promote_hint":"update migration regression"}"#,
+        )
+        .unwrap();
+
+        let args = build_args(dir.clone(), Some("alice"), true);
+        build_report(args).expect("update should migrate legacy candidates");
+
+        let global = dir.join(".hotpot/issue-candidates.jsonl");
+        let content = fs::read_to_string(&global).unwrap();
+        assert!(
+            content.contains("update skipped legacy candidates"),
+            "legacy candidate should be migrated during update, got: {content}"
+        );
+        assert_eq!(fs::read_to_string(&legacy).unwrap(), "");
     }
 
     #[test]
@@ -568,12 +603,10 @@ mod tests {
         let dir = temp_project_dir("second-run");
         install_claude_fixture(&dir);
         // 第一次：建 workspace。
-        let first =
-            build_report(build_args(dir.clone(), Some("bob"), true)).expect("first run");
+        let first = build_report(build_args(dir.clone(), Some("bob"), true)).expect("first run");
         assert!(first.workspace_created);
         // 第二次：workspace 已存在，应报 false 且不重写资产。
-        let second =
-            build_report(build_args(dir.clone(), Some("bob"), true)).expect("second run");
+        let second = build_report(build_args(dir.clone(), Some("bob"), true)).expect("second run");
         assert!(!second.workspace_created);
         // .gitignore 在 install fixture 阶段就已合并；第二次跑应该 skip。
         assert!(

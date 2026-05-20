@@ -119,7 +119,10 @@ pub struct Context {
     ///
     /// 禁用态为空串，通过 `skip_serializing_if` 从 JSON 中省略，避免
     /// 下游误把陈旧端口当成活动状态。
-    #[serde(rename = "HOTPOT_VUEPRESS_PORT", skip_serializing_if = "String::is_empty")]
+    #[serde(
+        rename = "HOTPOT_VUEPRESS_PORT",
+        skip_serializing_if = "String::is_empty"
+    )]
     pub vuepress_port: String,
 
     /// VuePress dev server 根 URL，仅启用态填充。
@@ -130,7 +133,10 @@ pub struct Context {
     ///
     /// 已预先拼成 `http://localhost:<port>`，brainstorming 收尾流程
     /// 直接展示给用户即可，无需重复计算。
-    #[serde(rename = "HOTPOT_VUEPRESS_URL", skip_serializing_if = "String::is_empty")]
+    #[serde(
+        rename = "HOTPOT_VUEPRESS_URL",
+        skip_serializing_if = "String::is_empty"
+    )]
     pub vuepress_url: String,
 }
 
@@ -156,23 +162,17 @@ impl Context {
         build_context(path_to_agent_string(&root_dir))
     }
 
-    /// 显式创建临时 issue 候选 JSONL 文件（含其父目录）。
+    /// 显式确保临时 issue 候选 JSONL 文件存在，并迁移旧候选。
     ///
     /// hook bootstrap 调用此方法保证 OpenCode / Pi 的插件运行时拿到一个
-    /// 已存在的 JSONL；业务命令不需要预创建文件，按需调用即可。
+    /// 已存在且已完成旧 per-user 候选迁移的 JSONL；业务命令不需要预创建文件，
+    /// 按需调用即可。
+    ///
+    /// Ensures the temporary issue candidates JSONL exists and runs the legacy
+    /// per-user migration path. Hook bootstrap calls this so OpenCode / Pi
+    /// plugins see the same global candidates file as the CLI.
     pub fn ensure_issue_candidates_file(&self) -> Result<()> {
-        let file_path = PathBuf::from(&self.issue_candidates_file);
-        if let Some(parent) = file_path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {}", parent.display()))?;
-        }
-
-        if !file_path.exists() {
-            fs::File::create(&file_path)
-                .with_context(|| format!("failed to create {}", file_path.display()))?;
-        }
-
-        Ok(())
+        crate::issues::ensure_issue_candidates_exists(&self.root_dir, &self.username).map(|_| ())
     }
 }
 
@@ -699,7 +699,12 @@ fn build_context(root_dir: String) -> Result<Context> {
     // otherwise left empty so `skip_serializing_if` drops them —
     // preventing stale values from being treated as live.
     let vuepress_enabled_bool = resolve_vuepress_enabled(&root_dir);
-    let vuepress_enabled = if vuepress_enabled_bool { "true" } else { "false" }.to_string();
+    let vuepress_enabled = if vuepress_enabled_bool {
+        "true"
+    } else {
+        "false"
+    }
+    .to_string();
     let (vuepress_port, vuepress_url) = if vuepress_enabled_bool {
         let port = resolve_vuepress_port(&root_dir);
         (port.to_string(), format!("http://localhost:{port}"))
@@ -920,6 +925,74 @@ mod tests {
         let (lang, source) = resolve_language_with_source(&root.display().to_string());
         assert_eq!(lang, "English");
         assert_eq!(source, LanguageSource::Default);
+    }
+
+    #[test]
+    fn context_uses_global_issue_candidates_file() {
+        let _guard = env_lock();
+        unsafe {
+            clear_lang_env();
+            env::remove_var("HOTPOT_USERNAME");
+        }
+        let root = unique_root("global-candidates");
+
+        let context = Context::resolve(Some(root)).unwrap();
+
+        assert!(
+            context
+                .issue_candidates_file
+                .ends_with("/.hotpot/issue-candidates.jsonl"),
+            "unexpected candidates path: {}",
+            context.issue_candidates_file
+        );
+        assert!(
+            !context.issue_candidates_file.contains("/workspaces/"),
+            "candidates path must be project-global: {}",
+            context.issue_candidates_file
+        );
+    }
+
+    #[test]
+    fn ensure_issue_candidates_file_migrates_legacy_candidates() {
+        let _guard = env_lock();
+        unsafe {
+            clear_lang_env();
+            env::remove_var("HOTPOT_USERNAME");
+        }
+        let root = unique_root("ensure-migrates-candidates");
+        let root_dir = root.display().to_string();
+        let legacy = root.join(".hotpot/workspaces/alice/issue-candidates.jsonl");
+        fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        fs::write(
+            &legacy,
+            r#"{"created_at":"2026-05-19T00:00:00Z","reason":"legacy","changed_files":["src/context.rs"],"keywords":["migration"],"problem":"legacy candidate invisible","fix":"migrate during bootstrap ensure","validation":["cargo test"],"promote_hint":"migration regression"}"#,
+        )
+        .unwrap();
+
+        let context = Context::resolve(Some(root.clone())).unwrap();
+        context.ensure_issue_candidates_file().unwrap();
+
+        let global = root.join(".hotpot/issue-candidates.jsonl");
+        let content = fs::read_to_string(&global).unwrap();
+        assert!(
+            content.contains("legacy candidate invisible"),
+            "legacy candidate should be migrated into global file, got: {content}"
+        );
+        assert_eq!(fs::read_to_string(&legacy).unwrap(), "");
+
+        context.ensure_issue_candidates_file().unwrap();
+        let non_empty_lines = fs::read_to_string(&global)
+            .unwrap()
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .count();
+        assert_eq!(non_empty_lines, 1, "migration must be idempotent");
+        assert!(
+            context
+                .issue_candidates_file
+                .ends_with("/.hotpot/issue-candidates.jsonl")
+        );
+        assert!(root_dir.contains("hotpot-lang-ensure-migrates-candidates"));
     }
 
     #[test]

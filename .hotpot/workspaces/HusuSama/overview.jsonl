@@ -6,4 +6,4 @@
 {"time":"2026-05-18","task_id":"u5hmCl5Hme","title":"unify-vuepress-gate-to-file-check","commit":"cc0c7f662350f5f001331df72238f24df7bd0664","status":"Done","active":false}
 {"time":"2026-05-18","task_id":"WlYC2YbKjU","title":"fix-vuepress-task-url-stem","commit":"ea239902bc435cb77f782d1c23a3694d69402dab","status":"Done","active":false}
 {"time":"2026-05-18","task_id":"zI-qUCrawO","title":"harden-execute-subagent-recovery","commit":"cccfee4a6702ce46503fe7ba4c426b9ffbd5cec3","status":"Done","active":false}
-{"time":"2026-05-18","task_id":"f7OvZXSzlo","title":"global-issue-candidates-file","commit":null,"status":"In Progress","active":true}
+{"time":"2026-05-18","task_id":"f7OvZXSzlo","title":"global-issue-candidates-file","commit":"7296869aee0a23b1fc5f1922d239140de82dcf0f","status":"Done","active":false}

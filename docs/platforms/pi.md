@@ -83,7 +83,7 @@ export default function (pi: ExtensionAPI) {
 }
 ```
 
-Hotpot implication: `commands/*.md` should map to Pi prompt templates, not to an OpenCode-compatible command directory. Use extension commands when command logic needs programmatic session control. Hotpot prompt templates that consume command text must explicitly reference Pi argument variables; for example, `hotpot-new` needs `$ARGUMENTS` in the body so `/hotpot-new <initial task idea>` becomes the shared workflow's initial task idea instead of triggering another clarification loop.
+Hotpot implication: `commands/*.md` should map to Pi prompt templates, not to an OpenCode-compatible command directory. Use extension commands when command logic needs programmatic session control. Hotpot prompt templates that consume command text must explicitly reference Pi argument variables; for example, `hotpot-new` needs `$ARGUMENTS` in the body so `/hotpot-new <initial task idea>` becomes the shared workflow's initial task idea instead of triggering another clarification loop. When editing `assets/platforms/pi/prompts/*.md`, also sync or verify any tracked `.pi/prompts/*.md` file used by local Pi testing so the source asset and actual project prompt do not drift.
 
 ## Agents
 

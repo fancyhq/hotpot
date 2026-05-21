@@ -68,4 +68,30 @@ mod tests {
             "Pi hotpot-new prompt template must ask only when command arguments are empty"
         );
     }
+
+    /// Ensures source and checked-in Pi prompt templates stay synchronized.
+    ///
+    /// 确保源资产和仓库内 Pi 实际读取的 prompt 模板保持同步。
+    #[test]
+    fn pi_prompt_source_and_installed_template_stay_in_sync() {
+        let source_template = include_str!("../../../assets/platforms/pi/prompts/hotpot-new.md");
+        let installed_template = include_str!("../../../.pi/prompts/hotpot-new.md");
+        let required_fragments = [
+            "$ARGUMENTS",
+            "treat it as the user's initial task idea",
+            "If it is empty",
+            "ask one concise question",
+        ];
+
+        for fragment in required_fragments {
+            assert!(
+                source_template.contains(fragment),
+                "Pi hotpot-new source prompt must contain required argument fragment: {fragment}"
+            );
+            assert!(
+                installed_template.contains(fragment),
+                "Pi hotpot-new installed prompt must contain required argument fragment: {fragment}"
+            );
+        }
+    }
 }

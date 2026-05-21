@@ -22,10 +22,11 @@
 - [x] **feat**: `issue-condidates.jsonl` 应该直接在 `.hotpot` 下，而不是某个用户目录下，因为这是属于全局的错误记录
 - [x] **bug**: 启动 `hotpot-execute` 时出现了报错：`Unknown agent type: hotpot-executionן codex-result-7fc55d31-78d6-4a0a-826a-4d89ca5387d3 is not a valid agent type`
 - [x] **bug**: 经常会出现 `API` 错误或者 `"Concurrency limit exceeded for user, please retry later"` 类型的错误
+- [x] **bug**: 在 `task` 文档中，有些状态，但是整体完成后，并没有修改这个 `In Progress` 的状态，要么移除这个状态显示，要么在整体完成后，再次更新这个状态，但是需要注意有 `vuepress` 和没有 `vuepress` 的文档内容同步
 - [ ] **feat**: `hotpot:finish-work` 流程太长，看是否能合并一些问题和操作
 - [ ] **bug**: 在使用 `brainstorming` 时，如果进行了其他对话操作，对于 `vuepress` 的规范会缺失，也不会启动并提醒 `vuepress` 查看
 - [ ] **bug**: 在 `pi` 中，使用 `hotpot-new` 命令，与 `pi` 的对话，会一直重复回答 `ready` ，无法使用，看是否需要在给 `pi` 的 `prompt` 中，插入 `$@` 类似的变量占位
-- [ ] **bug**: 在 `TDD` 模式下，`Implementation Tasks` 中只有第一个 `task` 前面显示了圆点的图标
+- [x] **bug**: 在 `TDD` 模式下，`Implementation Tasks` 中只有第一个 `task` 前面显示了圆点的图标
 - [ ] **feat**: 代码优化与模块拆分
 - [ ] **feat**: `subagent` 可自定义模型
 

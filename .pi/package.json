@@ -1,16 +1,10 @@
 {
   "name": "hotpot-pi-package",
   "private": true,
-  "keywords": [
-    "pi-package"
-  ],
+  "keywords": ["pi-package"],
   "pi": {
-    "extensions": [
-      "./extensions"
-    ],
-    "prompts": [
-      "./prompts"
-    ]
+    "extensions": ["./extensions"],
+    "prompts": ["./prompts"]
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "latest",

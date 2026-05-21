@@ -64,6 +64,7 @@ Template rules:
 - `description` is optional; the first non-empty line is used if missing.
 - `argument-hint` appears in autocomplete.
 - Templates support `$1`, `$2`, `$@`, `$ARGUMENTS`, `${@:N}`, and `${@:N:L}`.
+- Pi does not implicitly append slash-command arguments to the prompt body. Template authors must place `$ARGUMENTS`, `$@`, or positional variables in the Markdown body when the model needs to see command text.
 - Template discovery in `prompts/` is non-recursive unless settings or packages add paths explicitly.
 
 Extension command format:
@@ -82,7 +83,7 @@ export default function (pi: ExtensionAPI) {
 }
 ```
 
-Hotpot implication: `commands/*.md` should map to Pi prompt templates, not to an OpenCode-compatible command directory. Use extension commands when command logic needs programmatic session control.
+Hotpot implication: `commands/*.md` should map to Pi prompt templates, not to an OpenCode-compatible command directory. Use extension commands when command logic needs programmatic session control. Hotpot prompt templates that consume command text must explicitly reference Pi argument variables; for example, `hotpot-new` needs `$ARGUMENTS` in the body so `/hotpot-new <initial task idea>` becomes the shared workflow's initial task idea instead of triggering another clarification loop.
 
 ## Agents
 

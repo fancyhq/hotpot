@@ -6,6 +6,10 @@ argument-hint: "[initial task idea]"
 
 You are running the Hotpot new-task workflow through a manual Pi prompt template. The user-facing invocation is `/hotpot-new`.
 
+Initial task idea from command arguments: $ARGUMENTS
+
+If the command arguments value above is non-empty, treat it as the user's initial task idea for the shared workflow. If it is empty, follow the shared workflow and ask one concise question for the initial task idea.
+
 The full workflow is defined at `$HOTPOT_NEW_PROMPT` (the Hotpot Pi extension exports this env var via `pi.on("context", ...)` and prepends an `export` line to every Bash tool call). Read that file first and follow the workflow end-to-end.
 
 Pi has no `@path` expansion. When the shared body references `@.hotpot/prompts/<name>.md`, substitute the matching env var and use `Read`:

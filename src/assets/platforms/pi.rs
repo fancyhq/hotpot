@@ -37,3 +37,35 @@ pub(super) const ASSETS: &[Asset] = &[
         include_str!("../../../assets/platforms/pi/extensions/hotpot/index.ts"),
     ),
 ];
+
+#[cfg(test)]
+mod tests {
+    //! Pi asset content regression tests.
+    //!
+    //! Pi 平台资产内容回归测试，防止 prompt template 丢失命令参数传递。
+
+    /// Ensures the Pi new-task template passes slash-command arguments.
+    ///
+    /// 确保 Pi 新任务模板会把 slash command 参数传给共享 workflow。
+    #[test]
+    fn pi_new_prompt_template_passes_command_arguments() {
+        let template = include_str!("../../../assets/platforms/pi/prompts/hotpot-new.md");
+
+        assert!(
+            template.contains("$ARGUMENTS"),
+            "Pi hotpot-new prompt template must expose command arguments with $ARGUMENTS"
+        );
+        assert!(
+            template.contains("treat it as the user's initial task idea"),
+            "Pi hotpot-new prompt template must use non-empty command arguments as the initial task idea"
+        );
+        assert!(
+            template.contains("If it is empty"),
+            "Pi hotpot-new prompt template must preserve the empty-arguments fallback"
+        );
+        assert!(
+            template.contains("ask one concise question"),
+            "Pi hotpot-new prompt template must ask only when command arguments are empty"
+        );
+    }
+}

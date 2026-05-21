@@ -56,16 +56,44 @@ mod tests {
             "Pi hotpot-new prompt template must expose command arguments with $ARGUMENTS"
         );
         assert!(
-            template.contains("treat it as the user's initial task idea"),
-            "Pi hotpot-new prompt template must use non-empty command arguments as the initial task idea"
+            template.contains("<<< INITIAL TASK IDEA"),
+            "Pi hotpot-new prompt template must open an explicit INITIAL TASK IDEA delimiter block"
         );
         assert!(
-            template.contains("If it is empty"),
-            "Pi hotpot-new prompt template must preserve the empty-arguments fallback"
+            template.contains("<<< END INITIAL TASK IDEA >>>"),
+            "Pi hotpot-new prompt template must close the INITIAL TASK IDEA delimiter block"
         );
         assert!(
-            template.contains("ask one concise question"),
-            "Pi hotpot-new prompt template must ask only when command arguments are empty"
+            template.contains("IS the user's initial task idea"),
+            "Pi hotpot-new prompt template must declare the block IS the initial task idea unconditionally"
+        );
+        assert!(
+            template.contains("MUST explicitly reference or paraphrase"),
+            "Pi hotpot-new prompt template must force the first brainstorm message to reference the idea"
+        );
+        assert!(
+            template.contains("Do NOT ask another question to obtain the initial task idea"),
+            "Pi hotpot-new prompt template must forbid re-asking for the initial task idea"
+        );
+        assert!(
+            template.contains("Exception (empty arguments)"),
+            "Pi hotpot-new prompt template must mark the empty-arguments fallback as an explicit Exception override"
+        );
+        assert!(
+            template.contains("no non-whitespace text"),
+            "Pi hotpot-new prompt template must define the empty-block criterion explicitly so the model does not parse marker labels as user input"
+        );
+        assert!(
+            template.contains("ask exactly one concise question"),
+            "Pi hotpot-new prompt template must preserve the single-question empty-arguments fallback"
+        );
+        assert!(
+            template.contains("=== USER ACTIVE REQUEST ==="),
+            "Pi hotpot-new prompt template must open with the USER ACTIVE REQUEST framing block so Pi parses the body as an active request, not background docs"
+        );
+        assert!(
+            template.contains("NOT background documentation"),
+            "Pi hotpot-new prompt template must explicitly exclude background-documentation framing so competing context (AGENTS.md, skills) does not absorb the prompt"
         );
     }
 
@@ -78,9 +106,16 @@ mod tests {
         let installed_template = include_str!("../../../.pi/prompts/hotpot-new.md");
         let required_fragments = [
             "$ARGUMENTS",
-            "treat it as the user's initial task idea",
-            "If it is empty",
-            "ask one concise question",
+            "<<< INITIAL TASK IDEA",
+            "<<< END INITIAL TASK IDEA >>>",
+            "IS the user's initial task idea",
+            "MUST explicitly reference or paraphrase",
+            "Do NOT ask another question to obtain the initial task idea",
+            "Exception (empty arguments)",
+            "no non-whitespace text",
+            "ask exactly one concise question",
+            "=== USER ACTIVE REQUEST ===",
+            "NOT background documentation",
         ];
 
         for fragment in required_fragments {

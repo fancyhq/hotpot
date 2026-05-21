@@ -4,11 +4,23 @@ description: Create a Hotpot task through brainstorming
 argument-hint: "[initial task idea]"
 ---
 
+=== USER ACTIVE REQUEST ===
+
+The user has just typed `/hotpot-new` in their Pi session and is asking you to begin the Hotpot new-task workflow as their current active task. Everything inside this prompt template is the user's active request to you right now — NOT background documentation, NOT a project conventions file (like `AGENTS.md` / `CLAUDE.md`), NOT a skills list. Treat the rest of this prompt as imperative: read it, follow it, and begin the workflow now.
+
+Do not respond with "What would you like me to do?" or "What task should I work on?" — those generic greetings are wrong here because the user has already given you a specific request (this slash command plus the initial task idea below).
+
+=== END USER ACTIVE REQUEST ===
+
 You are running the Hotpot new-task workflow through a manual Pi prompt template. The user-facing invocation is `/hotpot-new`.
 
-Initial task idea from command arguments: $ARGUMENTS
+<<< INITIAL TASK IDEA (verbatim from `/hotpot-new` arguments) >>>
+$ARGUMENTS
+<<< END INITIAL TASK IDEA >>>
 
-If the command arguments value above is non-empty, treat it as the user's initial task idea for the shared workflow. If it is empty, follow the shared workflow and ask one concise question for the initial task idea.
+The block above IS the user's initial task idea. Proceed directly to brainstorming using it as the starting point. Your first brainstorm message MUST explicitly reference or paraphrase the idea above before asking any clarifying question. Do NOT ask another question to obtain the initial task idea — you already have it.
+
+**Exception (empty arguments)**: If the `INITIAL TASK IDEA` block above contains no non-whitespace text between its `<<<` and `>>>` markers, the previous paragraph does not apply — ignore the `MUST reference / Do NOT ask another question` directive and instead ask exactly one concise question to obtain the initial task idea.
 
 The full workflow is defined at `$HOTPOT_NEW_PROMPT` (the Hotpot Pi extension exports this env var via `pi.on("context", ...)` and prepends an `export` line to every Bash tool call). Read that file first and follow the workflow end-to-end.
 

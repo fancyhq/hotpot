@@ -12,3 +12,4 @@
 {"time":"2026-05-21","task_id":"7HRDhltz2S","title":"strengthen-pi-new-arguments-prompt","commit":"628f5867d85c1167939bf840b064d2082457465d","status":"Done","active":false}
 {"time":"2026-05-21","task_id":"TtVGuuw9Yr","title":"migrate-pi-commands-to-extension","commit":null,"status":"In Progress","active":false}
 {"time":"2026-05-21","task_id":"1OxeIwhj7g","title":"pi-fix-weak-model-task-handoff","commit":"af1487a","status":"Done","active":false}
+{"time":"2026-05-22","task_id":"2Prmow0FQ1","title":"guard-pi-hotpot-first-tool-call","commit":"f8fe8e1ebf6e68e2b350f13a7644873e9a1b793a","status":"Done","active":false}

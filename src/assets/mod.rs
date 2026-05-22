@@ -186,6 +186,19 @@ pub fn install_for(
             }
         }
     }
+
+    // One-shot retirement of deprecated Pi prompt-template thin shells. The
+    // asset engine only installs/refreshes; it does not retire removed
+    // assets, so this runs whenever the Pi platform is in scope and we are
+    // not in dry-run mode. Idempotent: missing paths are skipped silently.
+    //
+    // 废弃 Pi prompt thin shell 的一次性清理。资产引擎只装不卸，所以
+    // 在 Pi（或 All）平台范围内、非 dry-run 时主动调用 cleanup。幂等：
+    // 文件不在则跳过。
+    if !dry_run && matches!(platform, Platform::Pi | Platform::All) {
+        platforms::cleanup_deprecated_pi_prompts(project_dir)?;
+    }
+
     Ok(stats)
 }
 

@@ -8,12 +8,15 @@ links, images, blockquotes) all work normally.
 
 ## MUST Rules
 
-The five rules below are non-negotiable. They are how the AI-authored
+The six rules below are non-negotiable. They are how the AI-authored
 task file lands in VuePress with usable visual hierarchy, semantic
-callouts, and scannable structure. Rule 5 in particular is the
-defensive escape hatch against the markdown-hint container parser bug
-that has historically caused duplicate H2/H3 anchors to leak from
-example code blocks.
+callouts, and scannable structure. Rule 5 is the defensive escape
+hatch against the markdown-hint container parser bug that has
+historically caused duplicate H2/H3 anchors to leak from example
+code blocks; Rule 6 is the defensive escape hatch against the
+backslash-backtick pseudo-escape that leaks `<word>`-shaped tokens
+out of inline code into raw markdown and crashes the Vue SFC
+compiler.
 
 ### MUST 1 — Insert an Overview container between H1 and `## Task`
 
@@ -128,6 +131,62 @@ In other words: a `:::` container body may contain a fenced code
 block ONLY IF that fenced block does not itself contain `:::`. To
 show a `:::` example, host the fenced block at the top level of the
 document, not inside another `:::` container.
+
+### MUST 6 — Never write `\`` inside an inline code span; use double-backtick wrapping for embedded backticks
+
+Markdown does NOT treat `\`` (backslash + backtick) as an escaped
+backtick. A single-backtick inline span closes at the very next
+single backtick in the source, regardless of any preceding
+backslash. The sequence `` `outer \`inner\` more` `` therefore
+parses as **three fragments**:
+
+`````text
+Source:  `outer \`inner\` more`
+
+Parses as:
+  bt-1 … bt-2  →  inline code, body = "outer \"
+  bt-2 … bt-3  →  PLAIN TEXT       = "inner\"   ← leaks out of code formatting
+  bt-3 … bt-4  →  inline code, body = " more"
+`````
+
+The middle fragment escapes code formatting entirely. If it
+contains a `<word>`-shaped token (e.g. `<name>.md`,
+`<workflowName>`, `<TaskTitle>`), VuePress runs the rendered HTML
+through Vue's template compiler — an unregistered `<word>` is
+parsed as an unknown component with no matching `</word>` close,
+the SFC compile fails, and the dev server returns its error
+overlay instead of the task content.
+
+To embed literal backticks inside an inline code span, **wrap the
+span in double-backticks** (markdown standard) and write the
+embedded single backticks as themselves. Single backticks inside a
+double-backtick span are literal characters.
+
+`````markdown
+DO NOT WRITE — backslash-backtick leaks the middle fragment as raw text:
+
+`YOUR FIRST TOOL CALL MUST BE \`Read("<path>")\` — DO NOTHING ELSE FIRST.`
+`When the workflow references \`@.hotpot/prompts/<name>.md\`, substitute it.`
+`````
+
+`````markdown
+SAFE — double-backtick outer wrapper, single backticks inside are literal:
+
+``YOUR FIRST TOOL CALL MUST BE `Read("<path>")` — DO NOTHING ELSE FIRST.``
+``When the workflow references `@.hotpot/prompts/<name>.md`, substitute it.``
+`````
+
+Alternative: split the sentence into multiple single-backtick spans
+joined by plain text — e.g. write `Read("<path>")` as its own
+inline code segment with the surrounding instruction text outside
+the code. This is verbose but mechanically safe.
+
+The bug is invisible in plain-markdown rendering (GitHub, most
+editors) because they do not run a Vue compile pass — they simply
+render the leaked middle fragment as ordinary text. VuePress is
+where it becomes a hard error, so a task file that "looks fine in
+the editor" can still crash the dev server. When in doubt, audit
+inline code spans for `\`` and rewrite them with double-backticks.
 
 ## SHOULD Recommendations
 
@@ -386,7 +445,7 @@ handling needed — but their presence is the hard contract
 
 - Standard GFM markdown (including task lists `- [ ]`) is **safe by
   default**. Write the way you would write plain markdown.
-- The 5 MUST rules above must be followed; the 7 SHOULD recommendations
+- The 6 MUST rules above must be followed; the 7 SHOULD recommendations
   may be omitted when the document is already dense (but try to apply
   most of them — they materially improve scannability for both AI and
   human reviewers).

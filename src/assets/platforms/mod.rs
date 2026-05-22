@@ -16,6 +16,12 @@ mod codex;
 mod opencode;
 mod pi;
 
+// Re-export the Pi deprecated-prompt cleanup so the install dispatcher
+// can invoke it without depending on private platform internals.
+//
+// 暴露 Pi 废弃 prompt 清理函数给上层 install 调度使用。
+pub(super) use pi::cleanup_deprecated_pi_prompts;
+
 use clap::ValueEnum;
 
 use super::{Asset, SHARED_ASSETS};

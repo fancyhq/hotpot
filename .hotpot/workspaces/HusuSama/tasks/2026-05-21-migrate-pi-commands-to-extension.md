@@ -176,17 +176,17 @@ Pi has no dedicated subagents — run execution and review phases as strictly se
 - Modify: `assets/platforms/pi/extensions/hotpot/index.ts`
 - Modify: `.pi/extensions/hotpot/index.ts`
 
-- [ ] Step 1: 打开 `assets/platforms/pi/extensions/hotpot/index.ts`，在 `export default function hotpotExtension(pi: ExtensionAPI) {` 内 `pi.on("session_shutdown", ...)` 之前的合适位置（既有 hooks 之间或之后均可，**不要破坏既有 hooks 顺序**），新增三个 `pi.registerCommand` 注册块（见 Approved Design "Pi extension command handler 消息 schema"）。
-- [ ] Step 2: 在 `export default function` 外（文件顶部 helper 区，紧邻 `bootstrapHotpot` / `ensureJsonlFile` 等既有 helper）新增 `buildPiCommandMessage(opts: { command, args, hotpot, ideaBlockLabel, workflowPromptPath, atPathRefs })`，返回拼好的消息 string。`atPathRefs` 是 `{ shortRef: string; absolutePath: string }[]`。
-- [ ] Step 3: 三个 handler 分别调用 `buildPiCommandMessage` 时传不同 `command` / `ideaBlockLabel` / `workflowPromptPath` / `atPathRefs`：
+- [x] Step 1: 打开 `assets/platforms/pi/extensions/hotpot/index.ts`，在 `export default function hotpotExtension(pi: ExtensionAPI) {` 内 `pi.on("session_shutdown", ...)` 之前的合适位置（既有 hooks 之间或之后均可，**不要破坏既有 hooks 顺序**），新增三个 `pi.registerCommand` 注册块（见 Approved Design "Pi extension command handler 消息 schema"）。
+- [x] Step 2: 在 `export default function` 外（文件顶部 helper 区，紧邻 `bootstrapHotpot` / `ensureJsonlFile` 等既有 helper）新增 `buildPiCommandMessage(opts: { command, args, hotpot, ideaBlockLabel, workflowPromptPath, atPathRefs })`，返回拼好的消息 string。`atPathRefs` 是 `{ shortRef: string; absolutePath: string }[]`。
+- [x] Step 3: 三个 handler 分别调用 `buildPiCommandMessage` 时传不同 `command` / `ideaBlockLabel` / `workflowPromptPath` / `atPathRefs`：
   - `hotpot-new`：label `INITIAL TASK IDEA`；workflowPromptPath `hotpot.HOTPOT_NEW_PROMPT`；atPathRefs 包含 output-language / tdd-protocol / record-issue-candidate / summarize-issue-candidates / get-issue / hotpot-execute / hotpot-finish-work 全部 7 项。
   - `hotpot-execute`：label `EXECUTION NOTES`；workflowPromptPath `hotpot.HOTPOT_EXECUTE_PROMPT`；atPathRefs 5 项（去掉 hotpot-execute / hotpot-finish-work）。
   - `hotpot-finish-work`：label `FINISH NOTES`；workflowPromptPath `hotpot.HOTPOT_FINISH_WORK_PROMPT`；atPathRefs 4 项（去掉 tdd-protocol、record-issue-candidate、hotpot-finish-work；保留 output-language / summarize-issue-candidates / get-issue / hotpot-execute）。
-- [ ] Step 4: handler 实现中先 `const hotpot = await ensureContext(ctx.cwd);` → 再 `const text = buildPiCommandMessage(...);` → `await ctx.sendUserMessage(text);`。注意 args 是字符串可能为空，handler 不做 trim 早返回——所有空参数行为由消息文本内的 `Exception (empty arguments)` 段处理。
-- [ ] Step 5: 给三个 `pi.registerCommand` 块加 `description` 字段（描述简短英文，与既有 prompt template frontmatter `description` 对齐）。
-- [ ] Step 6: 给新增 helper / handler 加双语 JSDoc 注释（英文段 + 中文段），与文件既有注释风格一致。
-- [ ] Step 7: 把同样改动复制到 `.pi/extensions/hotpot/index.ts`（asset 源与 installed 一致）。
-- [ ] Step 8: 用 `diff -u assets/platforms/pi/extensions/hotpot/index.ts .pi/extensions/hotpot/index.ts` 验证两份完全一致；expect 空输出。
+- [x] Step 4: handler 实现中先 `const hotpot = await ensureContext(ctx.cwd);` → 再 `const text = buildPiCommandMessage(...);` → `await ctx.sendUserMessage(text);`。注意 args 是字符串可能为空，handler 不做 trim 早返回——所有空参数行为由消息文本内的 `Exception (empty arguments)` 段处理。
+- [x] Step 5: 给三个 `pi.registerCommand` 块加 `description` 字段（描述简短英文，与既有 prompt template frontmatter `description` 对齐）。
+- [x] Step 6: 给新增 helper / handler 加双语 JSDoc 注释（英文段 + 中文段），与文件既有注释风格一致。
+- [x] Step 7: 把同样改动复制到 `.pi/extensions/hotpot/index.ts`（asset 源与 installed 一致）。
+- [x] Step 8: 用 `diff -u assets/platforms/pi/extensions/hotpot/index.ts .pi/extensions/hotpot/index.ts` 验证两份完全一致；expect 空输出。
 
 #### Task 2: Remove deprecated Pi prompt template assets
 
@@ -198,11 +198,11 @@ Pi has no dedicated subagents — run execution and review phases as strictly se
 - Delete: `assets/platforms/pi/prompts/hotpot-finish-work.md`
 - Delete（条件）: `assets/platforms/pi/prompts/` 目录（empty 时）
 
-- [ ] Step 1: 用 `grep -n 'hotpot-new\|hotpot-execute\|hotpot-finish-work' src/assets/platforms/pi.rs` 定位 `ASSETS` 数组中三条 `Asset::owned(".pi/prompts/hotpot-*.md", include_str!(...))` 项；删除这三项（保留 `.pi/extensions/hotpot/index.ts` 项）。
-- [ ] Step 2: 删除 `src/assets/platforms/pi.rs` 中 `#[cfg(test)] mod tests` 里的 `pi_new_prompt_template_passes_command_arguments` 与 `pi_prompt_source_and_installed_template_stay_in_sync` 两个测试函数（断言对象已不存在）。
-- [ ] Step 3: 删除 `assets/platforms/pi/prompts/hotpot-new.md`、`hotpot-execute.md`、`hotpot-finish-work.md` 三份源文件（`git rm`）。
-- [ ] Step 4: 检查 `assets/platforms/pi/prompts/` 是否空（`ls assets/platforms/pi/prompts/ 2>/dev/null`）。若空，删目录（`rmdir`）。
-- [ ] Step 5: 跑 `cargo build` 验证 `include_str!` 引用一致——expect compile pass，无 missing-file 错。
+- [x] Step 1: 用 `grep -n 'hotpot-new\|hotpot-execute\|hotpot-finish-work' src/assets/platforms/pi.rs` 定位 `ASSETS` 数组中三条 `Asset::owned(".pi/prompts/hotpot-*.md", include_str!(...))` 项；删除这三项（保留 `.pi/extensions/hotpot/index.ts` 项）。
+- [x] Step 2: 删除 `src/assets/platforms/pi.rs` 中 `#[cfg(test)] mod tests` 里的 `pi_new_prompt_template_passes_command_arguments` 与 `pi_prompt_source_and_installed_template_stay_in_sync` 两个测试函数（断言对象已不存在）。
+- [x] Step 3: 删除 `assets/platforms/pi/prompts/hotpot-new.md`、`hotpot-execute.md`、`hotpot-finish-work.md` 三份源文件（`git rm`）。
+- [x] Step 4: 检查 `assets/platforms/pi/prompts/` 是否空（`ls assets/platforms/pi/prompts/ 2>/dev/null`）。若空，删目录（`rmdir`）。
+- [x] Step 5: 跑 `cargo build` 验证 `include_str!` 引用一致——expect compile pass，无 missing-file 错。
 
 #### Task 3: Implement and wire `cleanup_deprecated_pi_prompts`
 
@@ -211,19 +211,19 @@ Pi has no dedicated subagents — run execution and review phases as strictly se
 - Modify: `src/assets/platforms/pi.rs`
 - Modify: `src/commands/init/pi.rs`（执行时 `grep` 验证精确路径）
 
-- [ ] Step 1: 在 `src/assets/platforms/pi.rs` 文件顶部新增 `pub(crate) fn cleanup_deprecated_pi_prompts(root: &Path) -> std::io::Result<()>`：
+- [x] Step 1: 在 `src/assets/platforms/pi.rs` 文件顶部新增 `pub(crate) fn cleanup_deprecated_pi_prompts(root: &Path) -> std::io::Result<()>`：
   - 硬编码 list `[".pi/prompts/hotpot-new.md", ".pi/prompts/hotpot-execute.md", ".pi/prompts/hotpot-finish-work.md"]`
   - 循环 `for rel in LIST { let abs = root.join(rel); if abs.exists() { std::fs::remove_file(&abs)?; } }`
   - 加双语 doc 注释说明这是一次性废弃路径清理，未来如再废弃可扩展 list
-- [ ] Step 2: `grep -rn 'platforms::pi\|init_pi\|update_pi' src/commands/init/` 确认 Pi platform install entry 在 `src/commands/init/pi.rs` 还是 `src/commands/init/mod.rs`；找到 entry 函数（候选名 `init_pi` / `install_pi` / `pi::install`）。
-- [ ] Step 3: 在该 entry 函数 **既有资产 install 流程完成之后**（最后一步）调用 `crate::assets::platforms::pi::cleanup_deprecated_pi_prompts(root)?;`，把任何 IO 错向上传播。
-- [ ] Step 4: 在 `src/assets/platforms/pi.rs::tests` 内新增三条单元测试（用 `tempfile` crate 创建临时 root，已在项目里）：
+- [x] Step 2: `grep -rn 'platforms::pi\|init_pi\|update_pi' src/commands/init/` 确认 Pi platform install entry 在 `src/commands/init/pi.rs` 还是 `src/commands/init/mod.rs`；找到 entry 函数（候选名 `init_pi` / `install_pi` / `pi::install`）。
+- [x] Step 3: 在该 entry 函数 **既有资产 install 流程完成之后**（最后一步）调用 `crate::assets::platforms::pi::cleanup_deprecated_pi_prompts(root)?;`，把任何 IO 错向上传播。
+- [x] Step 4: 在 `src/assets/platforms/pi.rs::tests` 内新增三条单元测试（用 `tempfile` crate 创建临时 root，已在项目里）：
   - `cleanup_deprecated_pi_prompts_removes_all_three`：在 tempdir 里 `mkdir -p .pi/prompts/` + 写三份占位文件 → 跑 fn → assert 三文件不存在 + fn 返回 `Ok(())`
   - `cleanup_deprecated_pi_prompts_is_noop_when_absent`：tempdir 里不创任何文件 → 跑 fn → assert 返回 `Ok(())`
   - `cleanup_deprecated_pi_prompts_handles_partial_existence`：tempdir 里只创 `.pi/prompts/hotpot-new.md` → 跑 fn → assert 该文件不存在 + fn 返回 `Ok(())`
-- [ ] Step 5: 运行 `cargo test cleanup_deprecated_pi_prompts`，expect 三条测试通过。
-- [ ] Step 6: 运行 `cargo test`，expect 全量通过；前面删除的两个 prompt-template 测试不再出现；total = 84（基线 86 - 2）+ 3（新加）= 87。
-- [ ] Step 7: 在本仓 root 跑 `cargo run -- init --platform pi 2>&1 | tail`：expect 成功；之后 `ls .pi/prompts/ 2>&1`：expect 三个旧 thin shell 都不存在或目录不存在。
+- [x] Step 5: 运行 `cargo test cleanup_deprecated_pi_prompts`，expect 三条测试通过。
+- [x] Step 6: 运行 `cargo test`，expect 全量通过；前面删除的两个 prompt-template 测试不再出现；total = 84（基线 86 - 2）+ 3（新加）= 87。
+- [x] Step 7: 在本仓 root 跑 `cargo run -- init --platform pi 2>&1 | tail`：expect 成功；之后 `ls .pi/prompts/ 2>&1`：expect 三个旧 thin shell 都不存在或目录不存在。
 
 #### Task 4: Update platform & architecture docs
 
@@ -233,32 +233,32 @@ Pi has no dedicated subagents — run execution and review phases as strictly se
 - Modify: `docs/ARCH.md`
 - Modify: `docs/ARCH.zh_CN.md`
 
-- [ ] Step 1: 打开 `docs/platforms/pi.md`，定位上一任务沉淀的 "Inlining `$ARGUMENTS` inside a prose sentence ..." 整个 bullet（约 line 68，长 bullet 包含 three-part pattern + Exception + USER ACTIVE REQUEST 三段说明）。把整个 bullet 替换为一句较短的废弃说明：
+- [x] Step 1: 打开 `docs/platforms/pi.md`，定位上一任务沉淀的 "Inlining `$ARGUMENTS` inside a prose sentence ..." 整个 bullet（约 line 68，长 bullet 包含 three-part pattern + Exception + USER ACTIVE REQUEST 三段说明）。把整个 bullet 替换为一句较短的废弃说明：
 
   ```
   - **Hotpot 历史经验（已废弃）**: Hotpot 曾通过 prompt template thin shell（`.pi/prompts/hotpot-*.md` + `$ARGUMENTS` 注入 + 分隔块 + Exception 覆盖 + `=== USER ACTIVE REQUEST ===` framing）传递命令参数；该路径在加载 `AGENTS.md` / `CLAUDE.md` / 全局 skills 等竞争上下文的 Pi 项目里会被 AI 整体当作系统级背景文档吸收（参见 `migrate-pi-commands-to-extension`）。Hotpot 现已迁移到 Pi extension command（`pi.registerCommand` + `ctx.sendUserMessage`）传递命令参数。详见下面的 "Hotpot Pi extension commands"。
   ```
 
-- [ ] Step 2: 在 "Hotpot implication" 段之后、`## Agents` 之前新增 `### Hotpot Pi extension commands` 子节，覆盖：
+- [x] Step 2: 在 "Hotpot implication" 段之后、`## Agents` 之前新增 `### Hotpot Pi extension commands` 子节，覆盖：
   - 三个 `pi.registerCommand("hotpot-{new,execute,finish-work}", ...)` 注册入口
   - handler 流程：`ensureContext(ctx.cwd) → buildPiCommandMessage(...) → ctx.sendUserMessage(text)`
   - 消息内含分隔块 + framing + `$HOTPOT_*_PROMPT` 绝对路径 + Pi `@path` 替换表 + Platform note + Exception (empty arguments)
   - one-shot cleanup 行为：`hotpot init --platform pi` / `hotpot update` 时自动删除 `.pi/prompts/hotpot-{new,execute,finish-work}.md` 三个废弃 thin shell
-- [ ] Step 3: `docs/ARCH.md` 中找到 "Platform-specific surfaces" 列表里的 Pi 行（当前为 "Pi: `.pi/prompts/hotpot-*.md` + `.pi/extensions/`（no native subagents — single-session phased execution; review phase stays read-only）"）。把它改为 "Pi: `.pi/extensions/` —— `pi.registerCommand` registers `/hotpot-new` / `/hotpot-execute` / `/hotpot-finish-work` slash commands that send user-voice messages via `ctx.sendUserMessage`; no prompt-template thin shells; no native subagents — single-session phased execution; review phase stays read-only"。
-- [ ] Step 4: 在 ARCH.md "Notes For Future Agents" 末尾追加一条（中英对照其它条目风格）：
+- [x] Step 3: `docs/ARCH.md` 中找到 "Platform-specific surfaces" 列表里的 Pi 行（当前为 "Pi: `.pi/prompts/hotpot-*.md` + `.pi/extensions/`（no native subagents — single-session phased execution; review phase stays read-only）"）。把它改为 "Pi: `.pi/extensions/` —— `pi.registerCommand` registers `/hotpot-new` / `/hotpot-execute` / `/hotpot-finish-work` slash commands that send user-voice messages via `ctx.sendUserMessage`; no prompt-template thin shells; no native subagents — single-session phased execution; review phase stays read-only"。
+- [x] Step 4: 在 ARCH.md "Notes For Future Agents" 末尾追加一条（中英对照其它条目风格）：
   - "Pi 不再使用 prompt template thin shell 承接 slash commands；新增 Hotpot slash command 时必须同时在 `assets/platforms/pi/extensions/hotpot/index.ts` 里调 `pi.registerCommand` + 调用 `buildPiCommandMessage` helper；任何废弃 thin shell 路径必须加入 `src/assets/platforms/pi.rs::cleanup_deprecated_pi_prompts` 的列表，使 `hotpot init` / `update` 能自动清理。"
-- [ ] Step 5: `docs/ARCH.zh_CN.md` 同步更新 Pi 行的中文描述，以及"给后续 agent 的注意事项"末尾同义补一条。
+- [x] Step 5: `docs/ARCH.zh_CN.md` 同步更新 Pi 行的中文描述，以及"给后续 agent 的注意事项"末尾同义补一条。
 
 #### Task 5: Cross-cutting validation
 
 **Files**: 无新增
 
-- [ ] Step 1: `cargo test` 全量；expect 全过，no new warning，total = 87（86 - 2 + 3）。如果总数不是 87，列出每个被删/新增测试，分析 deviance。
-- [ ] Step 2: `cargo run -- init --platform pi` 在本仓跑一次；expect 成功；之后 `ls .pi/prompts/`：expect 三个旧 thin shell 都不存在（或目录已删）。
-- [ ] Step 3: `diff -u assets/platforms/pi/extensions/hotpot/index.ts .pi/extensions/hotpot/index.ts`：expect 空输出（source 与 installed 一致）。
-- [ ] Step 4: `grep -n 'pi.registerCommand' .pi/extensions/hotpot/index.ts`：expect 三行命中（hotpot-new / hotpot-execute / hotpot-finish-work）。
-- [ ] Step 5: `grep -n 'hotpot-new.md\|hotpot-execute.md\|hotpot-finish-work.md' src/assets/platforms/pi.rs`：expect 仅出现在 cleanup_deprecated_pi_prompts 的硬编码 list（即 3-4 条命中，都来自 cleanup fn / 其测试），ASSETS 数组无命中。
-- [ ] Step 6: 把 `cargo test` 输出末尾 5 行附进 execution report，便于 review 核对。
+- [x] Step 1: `cargo test` 全量；expect 全过，no new warning，total = 87（86 - 2 + 3）。如果总数不是 87，列出每个被删/新增测试，分析 deviance。
+- [x] Step 2: `cargo run -- init --platform pi` 在本仓跑一次；expect 成功；之后 `ls .pi/prompts/`：expect 三个旧 thin shell 都不存在（或目录已删）。
+- [x] Step 3: `diff -u assets/platforms/pi/extensions/hotpot/index.ts .pi/extensions/hotpot/index.ts`：expect 空输出（source 与 installed 一致）。
+- [x] Step 4: `grep -n 'pi.registerCommand' .pi/extensions/hotpot/index.ts`：expect 三行命中（hotpot-new / hotpot-execute / hotpot-finish-work）。
+- [x] Step 5: `grep -n 'hotpot-new.md\|hotpot-execute.md\|hotpot-finish-work.md' src/assets/platforms/pi.rs`：expect 仅出现在 cleanup_deprecated_pi_prompts 的硬编码 list（即 3-4 条命中，都来自 cleanup fn / 其测试），ASSETS 数组无命中。
+- [x] Step 6: 把 `cargo test` 输出末尾 5 行附进 execution report，便于 review 核对。
 
 ### Validation
 
@@ -276,6 +276,8 @@ Pi has no dedicated subagents — run execution and review phases as strictly se
 ### Risks and Watchouts
 
 - **`ctx.sendUserMessage` 在用户实际 Pi 版本的可用性**：`docs/platforms/pi.md` 列示了该 API，但本仓无 TS 测试栈，编译期不能 lint。**强烈依赖你的真实 Pi 端到端测试**作为唯一验证；如 API 在你 Pi 版本上不可用，本任务方案需重新评估（可能要回到 `pi.on("context", …)` 推 user-role 消息的更上游方案）。
+  - **Post-validation fix 1 (2026-05-21)**: 用户在真实 Pi 会话报错 `Extension "command:hotpot-new" error: ctx.sendUserMessage is not a function`。查 `@earendil-works/pi-coding-agent` 的 `types.d.ts`：`sendUserMessage` 实际在 `ExtensionAPI`（factory 的 `pi` 参数，line 841）上，**不**在 `ExtensionCommandContext`（handler 的 `ctx` 参数）上。`ReplacedSessionContext`（`withSession()` 回调）另有自己的 `sendUserMessage`，与本场景无关。`ExtensionAPI.sendUserMessage` 返回 `void`（非 `Promise<void>`）。修复：把三个 handler 中的 `await ctx.sendUserMessage(text)` 改为 `pi.sendUserMessage(text)`（`pi` 在 factory 词法作用域内），同步更新 `buildPiCommandMessage` 与 Slash-command 注释块；`assets/` 与 `.pi/` 两份 byte-identical（`hotpot init --platform pi --force` 同步）；`cargo test` 87 passed。
+  - **Post-validation fix 2 (2026-05-21)**: 用户第二次真实 Pi 验证仍失败——"测试了 pi ，依然存在不能判断任务的问题"。读取 session log `/Users/bytedance/.pi/agent/sessions/.../2026-05-21T09-24-29-417Z_019e49d9-c669-78e1-a7f0-a1c1d79276d6.jsonl` 定位失效链：line 4 用户消息（含完整 framing + INITIAL TASK IDEA + 绝对路径 + @path 表）已正确以 `role:user` 投递；但 `kimi-k2.6` (moonshotai-cn) 模型在 line 5 thinking 直接幻觉为 "user wants me to explore the project structure"，跑 `ls -la`；line 7 thinking "use the project-structure-explorer skill"，全局 skill（`~/.agents/skills/project-structure-explorer/SKILL.md`，描述 `当用户需要查询项目结构、查看目录树、了解项目文件组织时使用此 skill`）被自动调用劫持本轮；line 9 继续幻觉 "look at the issue mentioned in the PR" 跑 `git log`；line 11 干脆幻觉用户输入是 "嗯" 而回应 "你好！有什么我可以帮你的吗？"。模型从未读取 `hotpot-new.md`。根因：长篇结构化消息被弱指令跟随模型当作背景文档，skill auto-invocation 抢先决定行动。修复：重构 `buildPiCommandMessage` 消息体——(1) 去掉 `=== USER ACTIVE REQUEST ===` / `=== END ===` 仪式框（`role:user` 已经隐含"用户请求"语义）；(2) 首行即绝对命令 "YOUR FIRST TOOL CALL MUST BE `Read` ON THIS EXACT PATH" + workflow 文件绝对路径，强迫模型把首个工具调用钉死在 Read workflow；(3) 显式 "FORBIDDEN" 列表逐条枚举 session log 里观测到的干扰行为（`ls`/`tree`/`git log`/`git status`/任何 skill/`project-structure-explorer`/追问/泛化问候）；(4) `@path` 替换表、INITIAL TASK IDEA 块、empty-args Exception、Platform note 保留但移到 FORBIDDEN 列表之后；(5) `buildPiCommandMessage` JSDoc 扩写为"两类需要这条消息体抵御的失效模式"——prompt-template absorption（已修）+ skill auto-invocation hijack（本次）——记录症状与修复策略，供未来 agent 调试同类回归。`assets/` 与 `.pi/` 两份 byte-identical 同步；`cargo test` 87 passed。**仍需用户在真实 Pi 会话端到端重新验证四个用例。** 若 `kimi-k2.6` 仍不响应，备选路径：通过 `pi.on("context", ...)` 注入系统级"忽略 skill 自动调用"指令；或用更强指令跟随模型重测。
 - **TypeScript 编译错误无 CI**：项目无 `tsc --noEmit` 阶段。execution agent 在 Step 1 改完后必须**手动用 `tsc --noEmit assets/platforms/pi/extensions/hotpot/index.ts`** 或类似手段做编译检查；若没装 `tsc`，至少用 `node --check` 对编译产物做 sanity check。如本机也没 Node，至少做 `head` 抽样人工读 + 配合资产同步 diff 验证语法表面无误。
 - **Pi 命令名解析冲突**：旧 `.pi/prompts/hotpot-*.md` 在本仓里会被 cleanup 删除；但如果 execution agent 改完代码后忘记跑一次 `hotpot init --platform pi`，本仓 `.pi/prompts/` 可能还残留旧 thin shell——一定要按 Task 5 Step 2 显式跑一次以确认 cleanup 生效。
 - **handler 消息文本与共享 body 漂移**：消息里写了 Platform note、`@path` 替换表等内容，与共享 body 的 `Pi has no @path expansion ...` 段有重复义务。若未来共享 body 调整 substitution 列表（如新增 `@.hotpot/prompts/xxx.md` 引用），Pi handler 的 `@path` 替换表也必须同步——这是新维护面，risk 接受。docs/ARCH.md 的"Notes For Future Agents"应明示这个 sync 义务（见 Task 4 Step 4）。

@@ -139,3 +139,21 @@ VuePress 收尾 prompt 曾把任务文件名 `2025-03-02-mock-task.md` 错误截
 ### Solution
 在 orchestrator prompt 中显式定义 byte cap 常量（如 `DIFF_CAP_BYTES = 40960`），加 per-file 行级截断（`awk` 按行累计字节、不切 UTF-8 边界）+ 截断标记 + 让 subagent 自取完整 hunk 的 fallback；issue memory 裁剪到关键字段并指明 jq 自取路径。Cap 必须在 Default / TDD / Fix Loop 三处模板对称应用，fix-round prompt 同样受 cap 约束防止越跑越胖。先减负再加 retry，两层防护正交。
 
+## Prompt 资产文案变更必须审计同模块所有 fragment-anchored 测试
+- kind: optimization
+- date: 2026-05-21
+- tags: test, fragment-assertion, prompt-asset, sibling-tests, cargo-test, rust
+- paths: src/assets/platforms/, assets/platforms/
+
+### Scene
+审查任何 `assets/platforms/<platform>/prompts/*.md` 资产文案变更 PR，尤其是当 PR 同时更新 `src/assets/platforms/<platform>.rs` 内的 `#[cfg(test)] mod tests` 时。
+
+### Problem
+Plan 仅显式命名一个 fragment-anchored 测试时，同模块内可能还有其他 template.contains(...) / required_fragments 数组继续锚定旧字符串；只改 Plan 命名的那一个，cargo test 全量阶段会因 sibling 测试失败而回归。
+
+### Review Check
+改 `assets/platforms/<platform>/prompts/*.md` 文案时，grep 同 crate 模块（如 `src/assets/platforms/<platform>.rs`）所有 `template.contains(...)` 与 `required_fragments` 数组，把 sibling 测试一起纳入同一改动；不要依赖 task plan 中命名的那一个测试。
+
+### Solution
+改 prompt asset 前先扫同模块所有 fragment-anchored 测试位点，sibling 一并同步更新；必要时把锚定 fragment 抽成共享常量减少漂移面。
+

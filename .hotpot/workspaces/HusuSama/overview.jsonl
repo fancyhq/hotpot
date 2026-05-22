@@ -10,4 +10,5 @@
 {"time":"2026-05-21","task_id":"Sohnu9bT0J","title":"fix-pi-new-arguments","commit":"51bc25bf8077dc3f13aa57701ed6b9ec13fc35e9","status":"Done","active":false}
 {"time":"2026-05-21","task_id":"ZtBXQFcWVl","title":"sync-pi-installed-new-prompt","commit":"cb7fad6a5964a1fa1b33b5d8d8f1e5990586a507","status":"Done","active":false}
 {"time":"2026-05-21","task_id":"7HRDhltz2S","title":"strengthen-pi-new-arguments-prompt","commit":"628f5867d85c1167939bf840b064d2082457465d","status":"Done","active":false}
-{"time":"2026-05-21","task_id":"TtVGuuw9Yr","title":"migrate-pi-commands-to-extension","commit":null,"status":"In Progress","active":true}
+{"time":"2026-05-21","task_id":"TtVGuuw9Yr","title":"migrate-pi-commands-to-extension","commit":null,"status":"In Progress","active":false}
+{"time":"2026-05-21","task_id":"1OxeIwhj7g","title":"pi-fix-weak-model-task-handoff","commit":"af1487a","status":"Done","active":false}

@@ -9,7 +9,7 @@ permission:
     "git status*": allow
     "git rev-parse*": allow
     "hotpot issues relevant*": allow
-    "cargo run -- issues relevant*": allow
+    "hotpot issues relevant*": allow
   read: allow
   glob: allow
   grep: allow

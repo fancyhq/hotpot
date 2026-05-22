@@ -242,7 +242,7 @@ MCP setup examples:
 
 ```bash
 claude mcp add --transport http hotpot http://localhost:3000/mcp
-claude mcp add hotpot -- cargo run -- mcp serve
+claude mcp add hotpot -- hotpot mcp serve
 claude mcp list
 claude mcp get hotpot
 claude mcp remove hotpot
@@ -264,8 +264,8 @@ Precedence is local, project, user, plugin, then Claude.ai connectors.
 {
   "mcpServers": {
     "hotpot": {
-      "command": "cargo",
-      "args": ["run", "--", "mcp", "serve"],
+      "command": "hotpot",
+      "args": ["mcp", "serve"],
       "env": {
         "HOTPOT_ROOT": "${PWD:-.}"
       }

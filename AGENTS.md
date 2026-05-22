@@ -37,7 +37,6 @@ fn some_function(arg1: String, arg2: i32) -> Result<String> {
 }
 ```
 
-- When copying content such as `commands`, `agents`, and `hooks` to an `Agent` tool directory (`.claude`, `.opencode`, `.codex`, `.pi`, etc.), replace the `hotpot` command with the development command `cargo run --` to make development and debugging easier.
 - Output in code must use English, for example:
 - If a file exceeds 1000 lines, consider whether it should be split by functionality while remaining in the same module. **User confirmation is required before splitting.**
 
@@ -53,6 +52,6 @@ bail!("Hello")
 
 ## Notes
 
-- When writing files, use the binary name `hotpot`; when testing, use `cargo run --` instead of `hotpot`.
+- When writing files, use the binary name `hotpot`.
 - The project should minimize dependencies on other programming languages unless a compatible `Agent` tool must use that language, such as the `typescript` used by `opencode`. For languages without such restrictions, prefer `shell` scripts and keep Windows compatibility in mind.
 - `hotpot` is a global command-line tool and requires the `agent` to provide environment variables such as `ROOT_DIR` through hooks or similar mechanisms in order to work correctly. Be mindful of these dependencies.

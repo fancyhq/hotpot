@@ -351,11 +351,11 @@ pub(crate) fn build_report(args: UpdateArgs) -> Result<UpdateReport> {
         });
     }
 
-    // 6d. `hotpot` 是否在 PATH 中。Dev 模式（`cargo run --`）会缺，但那不是错。
+    // 6d. `hotpot` 是否在 PATH 中。如果不在，指导用户安装。
     if which_hotpot().is_none() {
         warnings.push(Warning {
             code: "binary_not_in_path".to_string(),
-            message: "`hotpot` is not on PATH; agents that shell out to `hotpot ...` will need `cargo run --` in this repo".to_string(),
+            message: "`hotpot` is not on PATH; install the binary so agents can shell out to `hotpot ...`".to_string(),
             fix: "`cargo install --path .` from the hotpot repo, or add the built binary to PATH".to_string(),
         });
     }

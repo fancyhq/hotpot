@@ -6,17 +6,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cargo run -- hook claude pre-tool-use",
-            "timeout": 5,
-            "statusMessage": "Preparing Hotpot shell context"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
             "command": "hotpot hook claude pre-tool-use",
             "timeout": 5,
             "statusMessage": "Preparing Hotpot shell context"
@@ -25,17 +14,6 @@
       }
     ],
     "SubagentStart": [
-      {
-        "matcher": "hotpot-execution|hotpot-review",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "cargo run -- hook claude subagent-start",
-            "timeout": 5,
-            "statusMessage": "Preparing Hotpot review memory"
-          }
-        ]
-      },
       {
         "matcher": "hotpot-execution|hotpot-review",
         "hooks": [

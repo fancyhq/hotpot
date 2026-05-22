@@ -89,8 +89,8 @@ and stop on blockers.
 """
 
 [mcp_servers.hotpot]
-command = "cargo"
-args = ["run", "--", "mcp", "serve"]
+command = "hotpot"
+args = ["mcp", "serve"]
 
 [[skills.config]]
 path = "./skills/hotpot-execute"
@@ -259,8 +259,8 @@ apps = true
 skill_mcp_dependency_install = true
 
 [mcp_servers.hotpot]
-command = "cargo"
-args = ["run", "--", "mcp", "serve"]
+command = "hotpot"
+args = ["mcp", "serve"]
 
 sandbox_mode = "workspace-write"
 approval_policy = "on-request"

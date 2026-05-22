@@ -27,7 +27,6 @@ Codex / Pi (no `@path` expansion): the thin shell's substitution table maps this
 - If the user provided text after the command, treat it as the initial task idea.
 - If no task idea was provided, ask one concise question to get the initial task idea.
 - In normal usage, run `hotpot ...` commands.
-- When testing or running inside this repository without an installed `hotpot` binary, use `cargo run -- ...` instead of `hotpot ...`.
 
 ## Required Flow
 
@@ -49,10 +48,10 @@ Hotpot enforces "at most one `active=true && status=In Progress` task per user".
    hotpot task list --json
    ```
 
-   If testing in this repository:
+   Run:
 
    ```bash
-   cargo run -- task list --json
+   hotpot task list --json
    ```
 
 2. **Partition `active=true` rows** into two buckets:
@@ -168,10 +167,10 @@ Start the companion as a Hotpot daemon:
 hotpot server start --project-dir "<project-root>" --daemon
 ```
 
-If testing in this repository, run:
+Run:
 
 ```bash
-cargo run -- server start --project-dir "<project-root>" --daemon
+hotpot server start --project-dir "<project-root>" --daemon
 ```
 
 The command returns JSON like:
@@ -237,10 +236,10 @@ If the companion is no longer needed, stop it with:
 hotpot server stop --session-dir "<session-dir>"
 ```
 
-If testing in this repository, run:
+Run:
 
 ```bash
-cargo run -- server stop --session-dir "<session-dir>"
+hotpot server stop --session-dir "<session-dir>"
 ```
 
 Use the app's own dev server separately when inspecting a real frontend. The companion server is for brainstorming mockups and visual choices; the app dev server is for viewing the actual product UI.
@@ -285,8 +284,6 @@ Concrete example:
 hotpot task create --title "add-login-retry"
 ```
 
-If testing in this repository, replace `hotpot` with `cargo run --`.
-
 The CLI prints the new `TaskInfo` row as JSON on stdout. Verify `"status":"In Progress"` and that `"active"` matches what you asked for. If the command bails with a message starting `ACTIVE_CONFLICT:`, you passed no flag while a live active existed — go back to "Active Task Handling", surface the error verbatim to the user, ask which option, then retry with `--switch` or `--inactive`.
 
 This command only creates task metadata in `overview.jsonl`; it does not write the task handoff content.
@@ -312,10 +309,10 @@ Choose ONE of these two paths depending on the flag passed to `task create`:
   hotpot task active --path
   ```
 
-  If testing in this repository, run:
+  Run:
 
   ```bash
-  cargo run -- task active --path
+  hotpot task active --path
   ```
 
 - **`--inactive`** — the new task is `active=false`, so `hotpot task active --path` still resolves to the **existing** live active task's path, NOT the new one. Construct the new task's path yourself from the captured JSON using the convention above (`<workspace>/tasks/<time>-<title>.md`), and tell the user that `/hotpot:execute` will keep targeting the previous active until they `hotpot task resume --task-id <NEW_ID>` later.

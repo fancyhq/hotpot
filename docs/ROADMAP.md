@@ -8,7 +8,7 @@
 - [ ] **feat**: `brainstorming` 时检测哪些任务可以并行，启动多个子代理执行任务
 - [ ] **feat**: 增加主代理执行和子代理执行的选择，主代理执行无需重新读取 `task` 文件
 - [ ] **feat**: 启动子代理执行，直接启动子代理执行，主代理无需再次阅读 `task` 文件
-- [ ] **feat**: 在 `brainstorming` 等文件中，移除使用 `cargo run --` 的说明，全部使用 `hotpot` 正式二进制名称
+- [x] **feat**: 在 `brainstorming` 等文件中，移除使用 `cargo run --` 的说明，全部使用 `hotpot` 正式二进制名称
 - [ ] **feat**: `hotpot:finish-work` 流程太长，看是否能合并一些问题和操作
 - [ ] **feat**: 代码优化与模块拆分
 - [ ] **feat**: `subagent` 可自定义模型

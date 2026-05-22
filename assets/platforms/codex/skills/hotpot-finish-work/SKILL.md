@@ -1,4 +1,3 @@
-<!-- Hotpot Codex skill asset for finishing the active task. -->
 ---
 name: hotpot-finish-work
 description: Finish the active Hotpot task, promote review memory candidates, optionally create a git commit, and mark the task done.

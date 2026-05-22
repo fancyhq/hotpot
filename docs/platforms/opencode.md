@@ -94,7 +94,7 @@ tools:
 permission:
   edit: allow
   bash:
-    "cargo run -- *": allow
+    "hotpot *": allow
     "*": ask
 color: blue
 ---

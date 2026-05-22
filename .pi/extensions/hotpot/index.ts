@@ -39,6 +39,99 @@ type IssueCandidate = {
   promote_hint: string;
 };
 
+/**
+ * Runtime guard state for the first tool call after a Hotpot Pi slash command.
+ * Pi slash command 后首个工具调用的运行时护栏状态。
+ *
+ * The guard records the command that armed it, the exact workflow prompt path
+ * that must be read first, and the user-input label where the model should
+ * find the real request in the latest user message.
+ * 该状态记录触发命令、首读必须命中的 workflow prompt 绝对路径，以及模型应在
+ * 最近 user message 中查找真实需求的用户输入块 label。
+ */
+export type PendingFirstToolGuard = {
+  command: string;
+  workflowPromptPath: string;
+  userInputLabel: string;
+};
+
+/**
+ * Result returned by the first-tool guard evaluator.
+ * 首轮工具调用护栏判定结果。
+ *
+ * `block` tells the Pi `tool_call` hook whether to stop execution. When a
+ * workflow read is allowed, `disarm` tells the caller to clear the guard.
+ * `block` 表示 Pi `tool_call` hook 是否应阻止执行；当 workflow read 被允许时，
+ * `disarm` 表示调用方应解除护栏。
+ */
+export type FirstToolGuardDecision =
+  | { block: false; disarm: true }
+  | { block: true; reason: string; keepArmed: true };
+
+/**
+ * Build the corrective instruction returned when the first-tool guard blocks.
+ * 构造首轮工具调用护栏拦截时返回给模型的纠正文案。
+ *
+ * The message is intentionally English and imperative because it is consumed
+ * by the model as a tool-layer correction, not shown as user-facing prose.
+ * 文案刻意使用英文祈使句，因为它是工具层返回给模型的纠偏指令，不是面向用户的自然语言。
+ */
+export function buildFirstToolGuardReason(guard: PendingFirstToolGuard): string {
+  return [
+    `Blocked by Hotpot first-tool guard: /${guard.command} was just invoked.`,
+    `The user's real request is in the latest user message between <<< ${guard.userInputLabel} >>> and <<< END ${guard.userInputLabel} >>>.`,
+    `Your next tool call MUST be Read("${guard.workflowPromptPath}").`,
+    "Do not explore the project, invoke skills, read other files, run shell commands, ask what to do, or greet the user before reading that workflow prompt.",
+  ].join(" ");
+}
+
+/**
+ * Evaluate whether an armed Hotpot first-tool guard should allow this call.
+ * 判定已 armed 的 Hotpot 首轮工具调用护栏是否允许当前调用。
+ *
+ * Pi's observed built-in `read` input uses `path`; the evaluator also accepts
+ * `filePath` defensively because some agent tool surfaces use that field name.
+ * It deliberately does not guess any other path fields.
+ * 实测 Pi 内置 `read` 工具参数为 `path`；这里也防御性支持 `filePath`，因为部分
+ * agent 工具表面使用该字段名。除这两者外不猜测其它路径字段。
+ */
+export function evaluateFirstToolGuard(
+  guard: PendingFirstToolGuard,
+  toolName: string,
+  input: unknown,
+): FirstToolGuardDecision {
+  const maybeInput = input && typeof input === "object" ? input as Record<string, unknown> : {};
+  const readPath = typeof maybeInput.path === "string"
+    ? maybeInput.path
+    : typeof maybeInput.filePath === "string"
+      ? maybeInput.filePath
+      : undefined;
+
+  if (toolName === "read" && readPath === guard.workflowPromptPath) {
+    return { block: false, disarm: true };
+  }
+
+  return {
+    block: true,
+    keepArmed: true,
+    reason: buildFirstToolGuardReason(guard),
+  };
+}
+
+/**
+ * Inject Hotpot environment variables into a shell command.
+ * 向 shell command 注入 Hotpot 环境变量。
+ *
+ * Kept as a helper so the `tool_call` hook remains a simple sequence:
+ * first-tool guard → bash env injection → return.
+ * 抽出 helper 让 `tool_call` hook 保持清晰顺序：首轮工具护栏 → bash 环境注入 → 返回。
+ */
+export function injectHotpotEnv(command: string, hotpot: HotpotContext): string {
+  return `export ${Object.entries(hotpot)
+    .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+    .join(" ")}; ${command}`;
+}
+
 /** Bootstrap Hotpot context through the Rust CLI. */
 async function bootstrapHotpot(rootDir: string): Promise<HotpotContext> {
   const { stdout } = await execFileAsync("hotpot", [
@@ -240,6 +333,16 @@ export default function hotpotExtension(pi: ExtensionAPI) {
     | { command: string; workflowPromptPath: string; userInputLabel: string }
     | undefined;
 
+  // Runtime first-tool-call guard. Slash-command handlers arm this immediately
+  // before `pi.sendUserMessage`; the `tool_call` hook keeps it armed until the
+  // model reads the exact workflow prompt path, blocking every other first
+  // tool call so weak models cannot explore, invoke skills, or ask what to do.
+  //
+  // 运行时首轮工具调用护栏。slash command handler 在 `pi.sendUserMessage` 前
+  // arm；`tool_call` hook 会保持 armed，直到模型读取精确 workflow prompt
+  // 路径，并阻止其它首个工具调用，避免弱模型探索、调技能或反问需求。
+  let pendingFirstToolGuard: PendingFirstToolGuard | undefined;
+
   const ensureContext = async (cwd: string): Promise<HotpotContext> => {
     context ??= await bootstrapHotpot(cwd);
     return context;
@@ -303,6 +406,19 @@ export default function hotpotExtension(pi: ExtensionAPI) {
   });
 
   pi.on("tool_call", async (event, ctx) => {
+    if (pendingFirstToolGuard) {
+      const decision = evaluateFirstToolGuard(
+        pendingFirstToolGuard,
+        event.toolName,
+        event.input,
+      );
+      if (decision.block) {
+        return { block: true, reason: decision.reason };
+      }
+
+      pendingFirstToolGuard = undefined;
+    }
+
     if (event.toolName !== "bash") {
       return;
     }
@@ -310,9 +426,7 @@ export default function hotpotExtension(pi: ExtensionAPI) {
     const hotpot = await ensureContext(ctx.cwd);
     const command = event.input?.command;
     if (typeof command === "string") {
-      event.input.command = `export ${Object.entries(hotpot)
-        .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
-        .join(" ")}; ${command}`;
+      event.input.command = injectHotpotEnv(command, hotpot);
     }
   });
 
@@ -419,6 +533,11 @@ export default function hotpotExtension(pi: ExtensionAPI) {
         workflowPromptPath: hotpot.HOTPOT_NEW_PROMPT,
         userInputLabel: "INITIAL TASK IDEA",
       };
+      pendingFirstToolGuard = {
+        command: "hotpot-new",
+        workflowPromptPath: hotpot.HOTPOT_NEW_PROMPT,
+        userInputLabel: "INITIAL TASK IDEA",
+      };
       pi.sendUserMessage(text);
     },
   });
@@ -464,6 +583,11 @@ export default function hotpotExtension(pi: ExtensionAPI) {
         workflowPromptPath: hotpot.HOTPOT_EXECUTE_PROMPT,
         userInputLabel: "EXECUTION NOTES",
       };
+      pendingFirstToolGuard = {
+        command: "hotpot-execute",
+        workflowPromptPath: hotpot.HOTPOT_EXECUTE_PROMPT,
+        userInputLabel: "EXECUTION NOTES",
+      };
       pi.sendUserMessage(text);
     },
   });
@@ -501,6 +625,11 @@ export default function hotpotExtension(pi: ExtensionAPI) {
           "proceed without additional finish notes — do not ask me for any; just begin the finish-work workflow.",
       });
       pendingWorkflow = {
+        command: "hotpot-finish-work",
+        workflowPromptPath: hotpot.HOTPOT_FINISH_WORK_PROMPT,
+        userInputLabel: "FINISH NOTES",
+      };
+      pendingFirstToolGuard = {
         command: "hotpot-finish-work",
         workflowPromptPath: hotpot.HOTPOT_FINISH_WORK_PROMPT,
         userInputLabel: "FINISH NOTES",

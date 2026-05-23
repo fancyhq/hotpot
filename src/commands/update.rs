@@ -274,10 +274,11 @@ pub(crate) fn build_report(args: UpdateArgs) -> Result<UpdateReport> {
     // not installed yet) are demoted to a stderr warning so update
     // still completes; the consistency self-check below surfaces the
     // real "hub missing" problem with a repair hint.
-    if vuepress_enabled && !args.dry_run {
-        if let Err(err) = vuepress::sync_tasks_links(&root_dir) {
-            eprintln!("Warning: failed to sync vuepress docs symlinks: {err}");
-        }
+    if vuepress_enabled
+        && !args.dry_run
+        && let Err(err) = vuepress::sync_tasks_links(&root_dir)
+    {
+        eprintln!("Warning: failed to sync vuepress docs symlinks: {err}");
     }
 
     // ── 6. 健康自检 ──────────────────────────────────────────────────────
@@ -325,17 +326,15 @@ pub(crate) fn build_report(args: UpdateArgs) -> Result<UpdateReport> {
     //      Reuses `vuepress::verify_install_consistency` as the source
     //      of truth for what "consistent" means; failures become
     //      operator-visible warnings instead of errors.
-    if vuepress_enabled {
-        if let Err(err) = vuepress::verify_install_consistency(&root_dir) {
-            warnings.push(Warning {
-                code: "vuepress_inconsistent".to_string(),
-                message: format!("VuePress atomic state is out of sync: {err}"),
-                fix: format!(
-                    "hotpot vuepress uninstall && hotpot vuepress install --project-dir {}",
-                    project_dir.display()
-                ),
-            });
-        }
+    if vuepress_enabled && let Err(err) = vuepress::verify_install_consistency(&root_dir) {
+        warnings.push(Warning {
+            code: "vuepress_inconsistent".to_string(),
+            message: format!("VuePress atomic state is out of sync: {err}"),
+            fix: format!(
+                "hotpot vuepress uninstall && hotpot vuepress install --project-dir {}",
+                project_dir.display()
+            ),
+        });
     }
 
     // 6c. 默认 username 风险提示。
@@ -495,25 +494,23 @@ mod tests {
     //!      下不强求 binary-on-path）。
     //!   3. 第二次运行 → workspace_created=false，骨架文件保留。
     //!   4. default username + --allow-default → 不再生成 default_username 警告。
+    //!   5. 预置的 `.claude` / `.opencode` 用户内容在 update 后保持不变。
+    //!   5. 预置的 `.claude` / `.opencode` 用户内容在 update 后保持不变。
     //!
     //! Integration tests for `hotpot update`. Each test runs in a unique
     //! tempdir so cargo's parallel runner doesn't cross-contaminate state.
-    use std::{
-        env, fs,
-        path::PathBuf,
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use std::{fs, path::PathBuf};
 
     use super::*;
+    use tempfile::{Builder, TempDir};
 
     /// 在 `env::temp_dir()` 下分配一个唯一目录路径。
-    fn temp_project_dir(label: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = env::temp_dir().join(format!("hotpot-update-{label}-{nanos}"));
-        fs::create_dir_all(&dir).unwrap();
+    fn temp_project_dir(label: &str) -> TempDir {
+        let dir = Builder::new()
+            .prefix(&format!("hotpot-update-{label}-"))
+            .tempdir()
+            .unwrap();
+        fs::create_dir_all(dir.path().join(".hotpot")).unwrap();
         dir
     }
 
@@ -529,6 +526,21 @@ mod tests {
         .expect("fixture init should succeed");
     }
 
+    /// 在项目根里预置用户自有的 `.claude` / `.opencode` 内容，用于验证 update 不会误删。
+    ///
+    /// Seeds user-owned `.claude` / `.opencode` content at the project root so update can prove
+    /// it preserves pre-existing files outside Hotpot-managed asset paths.
+    fn seed_user_platform_content(project_dir: &PathBuf) {
+        fs::create_dir_all(project_dir.join(".claude/notes")).unwrap();
+        fs::write(project_dir.join(".claude/notes/custom.txt"), "keep me").unwrap();
+        fs::create_dir_all(project_dir.join(".opencode/custom")).unwrap();
+        fs::write(
+            project_dir.join(".opencode/custom/readme.md"),
+            "keep me too",
+        )
+        .unwrap();
+    }
+
     fn build_args(project_dir: PathBuf, username: Option<&str>, allow_default: bool) -> UpdateArgs {
         UpdateArgs {
             username: username.map(|s| s.to_string()),
@@ -542,7 +554,7 @@ mod tests {
     #[test]
     fn update_bails_without_any_platform_dir() {
         let dir = temp_project_dir("no-platform");
-        let args = build_args(dir, Some("alice"), true);
+        let args = build_args(dir.path().to_path_buf(), Some("alice"), true);
         let err = build_report(args).expect_err("should bail with no platform dir");
         let msg = format!("{err}");
         assert!(
@@ -554,9 +566,9 @@ mod tests {
     #[test]
     fn update_creates_workspace_skeleton_on_first_run() {
         let dir = temp_project_dir("first-run");
-        install_claude_fixture(&dir);
+        install_claude_fixture(&dir.path().to_path_buf());
 
-        let args = build_args(dir.clone(), Some("alice"), true);
+        let args = build_args(dir.path().to_path_buf(), Some("alice"), true);
         let report = build_report(args).expect("update should succeed");
 
         assert_eq!(report.username, "alice");
@@ -567,18 +579,42 @@ mod tests {
         );
         assert_eq!(report.refreshed_platforms, vec!["claude".to_string()]);
         // workspace 骨架文件已落地。
-        let ws = dir.join(".hotpot/workspaces/alice");
+        let ws = dir.path().join(".hotpot/workspaces/alice");
         assert!(ws.join("overview.jsonl").is_file());
-        assert!(dir.join(".hotpot/issue-candidates.jsonl").is_file());
+        assert!(dir.path().join(".hotpot/issue-candidates.jsonl").is_file());
         assert!(!ws.join("issue-candidates.jsonl").is_file());
         assert!(ws.join("tasks").is_dir());
     }
 
     #[test]
+    /// Verifies update keeps pre-existing user-owned platform content intact.
+    ///
+    /// 验证 update 会保留预先存在的用户自有平台内容。
+    fn update_preserves_existing_platform_directory_contents() {
+        let dir = temp_project_dir("preserve-platform-content");
+        install_claude_fixture(&dir.path().to_path_buf());
+        seed_user_platform_content(&dir.path().to_path_buf());
+
+        let args = build_args(dir.path().to_path_buf(), Some("alice"), true);
+        build_report(args).expect("update should succeed");
+
+        assert_eq!(
+            fs::read_to_string(dir.path().join(".claude/notes/custom.txt")).unwrap(),
+            "keep me"
+        );
+        assert_eq!(
+            fs::read_to_string(dir.path().join(".opencode/custom/readme.md")).unwrap(),
+            "keep me too"
+        );
+    }
+
+    #[test]
     fn update_migrates_legacy_workspace_candidates() {
         let dir = temp_project_dir("legacy-candidates");
-        install_claude_fixture(&dir);
-        let legacy = dir.join(".hotpot/workspaces/alice/issue-candidates.jsonl");
+        install_claude_fixture(&dir.path().to_path_buf());
+        let legacy = dir
+            .path()
+            .join(".hotpot/workspaces/alice/issue-candidates.jsonl");
         fs::create_dir_all(legacy.parent().unwrap()).unwrap();
         fs::write(
             &legacy,
@@ -586,10 +622,10 @@ mod tests {
         )
         .unwrap();
 
-        let args = build_args(dir.clone(), Some("alice"), true);
+        let args = build_args(dir.path().to_path_buf(), Some("alice"), true);
         build_report(args).expect("update should migrate legacy candidates");
 
-        let global = dir.join(".hotpot/issue-candidates.jsonl");
+        let global = dir.path().join(".hotpot/issue-candidates.jsonl");
         let content = fs::read_to_string(&global).unwrap();
         assert!(
             content.contains("update skipped legacy candidates"),
@@ -601,12 +637,14 @@ mod tests {
     #[test]
     fn update_is_idempotent_on_second_run() {
         let dir = temp_project_dir("second-run");
-        install_claude_fixture(&dir);
+        install_claude_fixture(&dir.path().to_path_buf());
         // 第一次：建 workspace。
-        let first = build_report(build_args(dir.clone(), Some("bob"), true)).expect("first run");
+        let first = build_report(build_args(dir.path().to_path_buf(), Some("bob"), true))
+            .expect("first run");
         assert!(first.workspace_created);
         // 第二次：workspace 已存在，应报 false 且不重写资产。
-        let second = build_report(build_args(dir.clone(), Some("bob"), true)).expect("second run");
+        let second = build_report(build_args(dir.path().to_path_buf(), Some("bob"), true))
+            .expect("second run");
         assert!(!second.workspace_created);
         // .gitignore 在 install fixture 阶段就已合并；第二次跑应该 skip。
         assert!(
@@ -622,14 +660,15 @@ mod tests {
     #[test]
     fn update_warns_on_default_username_without_allow_flag() {
         let dir = temp_project_dir("default-warn");
-        install_claude_fixture(&dir);
+        install_claude_fixture(&dir.path().to_path_buf());
 
         // 通过 --username 显式传 `default` 不会触发警告（source 是 env），
         // 所以这里改成检测：当 allow_default=false 时，若 source=Default，
         // 一定会出现 default_username 警告。直接构造对应 source 的路径较麻烦，
         // 改为间接验证 --allow-default 旁路逻辑：如果显式给一个非 default
         // username + allow_default=false，不应产生 default_username 警告。
-        let report = build_report(build_args(dir, Some("carol"), false)).expect("update");
+        let report = build_report(build_args(dir.path().to_path_buf(), Some("carol"), false))
+            .expect("update");
         assert!(
             !report.warnings.iter().any(|w| w.code == "default_username"),
             "non-default username should not trigger default_username warning"

@@ -1,4 +1,5 @@
 use std::{
+    ffi::OsStr,
     fs,
     io::Write,
     net::TcpListener,
@@ -192,25 +193,62 @@ pub fn serve(options: ServeOptions) -> Result<()> {
 pub fn stop(options: StopOptions) -> Result<()> {
     if options.all {
         let root_dir = context::resolve_root_dir(None)?;
-        let brainstorm_dir = paths::hotpot_dir(&root_dir).join("brainstorm");
-        if !brainstorm_dir.exists() {
-            return Ok(());
-        }
-        for entry in fs::read_dir(&brainstorm_dir)
-            .with_context(|| format!("读取目录失败：{}", brainstorm_dir.display()))?
-        {
-            let session_dir = entry?.path();
-            if session_dir.is_dir() {
-                stop_session(&session_dir)?;
-            }
-        }
-        return Ok(());
+        return stop_brainstorm_sessions(&root_dir);
     }
 
     let session_dir = options
         .session_dir
         .ok_or_else(|| anyhow!("--session-dir is required unless --all is used."))?;
+    ensure_brainstorm_session_dir(&session_dir)?;
     stop_session(&session_dir)
+}
+
+/// Ensures a session directory stays under the project's brainstorm tree.
+///
+/// 确保 session 目录始终位于项目的 brainstorm 树下。
+fn ensure_brainstorm_session_dir(session_dir: &Path) -> Result<()> {
+    if !session_dir.exists() {
+        return Ok(());
+    }
+
+    let session_dir = session_dir
+        .canonicalize()
+        .with_context(|| format!("确认 session 目录失败：{}", session_dir.display()))?;
+
+    let allowed = session_dir.ancestors().any(|ancestor| {
+        ancestor.file_name() == Some(OsStr::new("brainstorm"))
+            && ancestor.parent().and_then(|parent| parent.file_name()) == Some(OsStr::new(".hotpot"))
+    });
+
+    if !allowed {
+        bail!(
+            "--session-dir must point to a .hotpot/brainstorm session directory: {}",
+            session_dir.display()
+        );
+    }
+
+    Ok(())
+}
+
+/// Stops every brainstorm session under the project root.
+///
+/// 停止项目根下的所有 brainstorm session。
+fn stop_brainstorm_sessions(root_dir: &str) -> Result<()> {
+    let brainstorm_dir = paths::hotpot_dir(root_dir).join("brainstorm");
+    if !brainstorm_dir.exists() {
+        return Ok(());
+    }
+
+    for entry in fs::read_dir(&brainstorm_dir)
+        .with_context(|| format!("读取目录失败：{}", brainstorm_dir.display()))?
+    {
+        let session_dir = entry?.path();
+        if session_dir.is_dir() {
+            stop_session(&session_dir)?;
+        }
+    }
+
+    Ok(())
 }
 
 fn make_session_dir(project_dir: &Path) -> PathBuf {
@@ -408,25 +446,227 @@ fn write_event(session_dir: &Path, body: &str) -> Result<()> {
 }
 
 fn stop_session(session_dir: &Path) -> Result<()> {
+    stop_session_with(session_dir, session_is_alive, terminate_pid)
+}
+
+/// Stops one session and removes the session dir when cleanup is safe.
+///
+/// 停止单个 session，并在安全时清理整个 session 目录。
+fn stop_session_with<FAlive, FTerminate>(
+    session_dir: &Path,
+    is_pid_alive: FAlive,
+    terminate_pid_fn: FTerminate,
+) -> Result<()>
+where
+    FAlive: Fn(u32) -> bool,
+    FTerminate: Fn(u32) -> Result<()>,
+{
     let pid_path = state_dir(session_dir).join("server.pid");
-    if !pid_path.exists() {
+    let pid = match fs::read_to_string(&pid_path) {
+        Ok(raw) => match raw.trim().parse::<u32>() {
+            Ok(pid) => pid,
+            Err(_) => return cleanup_session_dir(session_dir),
+        },
+        Err(_) => return cleanup_session_dir(session_dir),
+    };
+
+    if !is_pid_alive(pid) {
+        return cleanup_session_dir(session_dir);
+    }
+
+    if let Err(err) = terminate_pid_fn(pid) {
+        if !is_pid_alive(pid) {
+            return cleanup_session_dir(session_dir);
+        }
+        return Err(err).context(format!("停止 server 进程失败，pid：{pid}"));
+    }
+
+    cleanup_session_dir(session_dir)
+}
+
+#[cfg(test)]
+fn stop_brainstorm_sessions_for_test<F>(root_dir: &str, stop_session_fn: F) -> Result<()>
+where
+    F: Fn(&Path) -> Result<()>,
+{
+    let brainstorm_dir = paths::hotpot_dir(root_dir).join("brainstorm");
+    if !brainstorm_dir.exists() {
         return Ok(());
     }
-    let pid = fs::read_to_string(&pid_path)
-        .with_context(|| format!("读取 server.pid 失败：{}", pid_path.display()))?
-        .trim()
-        .parse::<u32>()
-        .with_context(|| format!("解析 server.pid 失败：{}", pid_path.display()))?;
 
-    let status = Command::new("kill")
-        .arg(pid.to_string())
-        .status()
-        .with_context(|| format!("停止 server 进程失败，pid：{pid}"))?;
-    if !status.success() {
-        bail!("停止 server 进程失败，pid：{pid}");
+    for entry in fs::read_dir(&brainstorm_dir)
+        .with_context(|| format!("读取目录失败：{}", brainstorm_dir.display()))?
+    {
+        let session_dir = entry?.path();
+        if session_dir.is_dir() {
+            stop_session_fn(&session_dir)?;
+        }
     }
-    let _ = fs::remove_file(pid_path);
+
     Ok(())
+}
+
+/// Removes a session directory tree after stop or orphan cleanup.
+///
+/// 在停止或孤儿清理后移除整个 session 目录树。
+fn cleanup_session_dir(session_dir: &Path) -> Result<()> {
+    if !session_dir.exists() {
+        return Ok(());
+    }
+    fs::remove_dir_all(session_dir)
+        .with_context(|| format!("删除 session 目录失败：{}", session_dir.display()))
+}
+
+/// Checks whether a pid is alive on the current platform.
+///
+/// 检查 pid 在当前平台上是否仍然存活。
+fn session_is_alive(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        Command::new("kill")
+            .arg("-0")
+            .arg(pid.to_string())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+    #[cfg(windows)]
+    {
+        let output = Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+            .output();
+        match output {
+            Ok(out) if out.status.success() => {
+                String::from_utf8_lossy(&out.stdout).contains(&pid.to_string())
+            }
+            _ => false,
+        }
+    }
+}
+
+/// Terminates a live pid using the platform's native command.
+///
+/// 使用平台原生命令终止存活 pid。
+fn terminate_pid(pid: u32) -> Result<()> {
+    #[cfg(unix)]
+    {
+        let status = Command::new("kill")
+            .arg(pid.to_string())
+            .status()
+            .with_context(|| format!("停止 server 进程失败，pid：{pid}"))?;
+        if !status.success() {
+            bail!("停止 server 进程失败，pid：{pid}");
+        }
+    }
+    #[cfg(windows)]
+    {
+        let status = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T"])
+            .status()
+            .with_context(|| format!("停止 server 进程失败，pid：{pid}"))?;
+        if !status.success() {
+            bail!("停止 server 进程失败，pid：{pid}");
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::Builder;
+
+    fn temp_session_dir(label: &str) -> tempfile::TempDir {
+        let dir = Builder::new()
+            .prefix(&format!("hotpot-server-{label}-"))
+            .tempdir()
+            .unwrap();
+        fs::create_dir_all(dir.path()).unwrap();
+        dir
+    }
+
+    fn write_pid(session_dir: &Path, pid: &str) {
+        fs::create_dir_all(state_dir(session_dir)).unwrap();
+        fs::write(state_dir(session_dir).join("server.pid"), pid).unwrap();
+    }
+
+    #[test]
+    fn stop_session_removes_live_session_dir_after_success() {
+        let dir = temp_session_dir("live");
+        let session_dir = dir.path();
+        write_pid(session_dir, "1234");
+
+        let alive = |_: u32| true;
+        let terminate = |_: u32| Ok(());
+        stop_session_with(session_dir, alive, terminate).unwrap();
+
+        assert!(!session_dir.exists());
+    }
+
+    #[test]
+    fn stop_session_cleans_orphan_without_pid() {
+        let dir = temp_session_dir("orphan-missing-pid");
+        let session_dir = dir.path();
+        fs::create_dir_all(content_dir(session_dir)).unwrap();
+        fs::create_dir_all(state_dir(session_dir).join("nested")).unwrap();
+        fs::write(content_dir(session_dir).join("screen.html"), "<html/>").unwrap();
+
+        stop_session_with(session_dir, |_| false, |_| Ok(())).unwrap();
+
+        assert!(!session_dir.exists());
+    }
+
+    #[test]
+    fn stop_session_is_idempotent_for_repeated_orphan_cleanup() {
+        let dir = temp_session_dir("idempotent");
+        let session_dir = dir.path();
+        write_pid(session_dir, "9999");
+
+        let alive = |_: u32| false;
+        stop_session_with(session_dir, alive, |_| Ok(())).unwrap();
+        stop_session_with(session_dir, alive, |_| Ok(())).unwrap();
+
+        assert!(!session_dir.exists());
+    }
+
+    #[test]
+    fn stop_brainstorm_sessions_reuses_single_cleanup_path() {
+        let dir = temp_session_dir("all");
+        let root = dir.path();
+        let brainstorm = paths::hotpot_dir(&root.to_string_lossy()).join("brainstorm");
+        let session_a = brainstorm.join("a");
+        let session_b = brainstorm.join("b");
+        write_pid(&session_a, "1");
+        write_pid(&session_b, "2");
+
+        let calls = std::cell::RefCell::new(Vec::new());
+        stop_brainstorm_sessions_for_test(&root.to_string_lossy(), |session_dir| {
+            calls.borrow_mut().push(session_dir.display().to_string());
+            cleanup_session_dir(session_dir)
+        })
+        .unwrap();
+
+        // The helper should have removed both sessions via the shared cleanup path.
+        assert!(!session_a.exists());
+        assert!(!session_b.exists());
+        assert_eq!(calls.borrow().len(), 2);
+    }
+
+    #[test]
+    /// Verifies stop refuses to clean directories outside brainstorm.
+    ///
+    /// 验证 stop 会拒绝清理 brainstorm 目录之外的路径。
+    fn ensure_brainstorm_session_dir_rejects_outside_paths() {
+        let dir = temp_session_dir("guard");
+        let root = dir.path();
+        let outside = root.join("outside");
+        fs::create_dir_all(&outside).unwrap();
+
+        let err = ensure_brainstorm_session_dir(&outside).expect_err("should reject outside path");
+        let msg = format!("{err}");
+        assert!(msg.contains("brainstorm"), "unexpected error: {msg}");
+        assert!(outside.exists(), "guard must not delete arbitrary paths");
+    }
 }
 
 fn available_port(host: &str) -> Result<u16> {

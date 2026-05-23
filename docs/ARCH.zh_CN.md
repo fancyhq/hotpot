@@ -32,7 +32,7 @@
 │   ├── issues.jsonl                     # 共享、长期记忆
 │   ├── issue-candidates.jsonl           # 共享、临时 review 记忆候选
 │   ├── prompts/                         # 已安装的提示词资产（勿改）
-│   ├── brainstorm/<session>/            # 可视化伴侣临时产物
+│   ├── brainstorm/<session>/            # 可视化伴侣临时产物；stop 会清理 brainstorm session 目录
 │   └── workspaces/<username>/
 │       ├── overview.jsonl
 │       └── tasks/<YYYY-MM-DD>-<title>.md

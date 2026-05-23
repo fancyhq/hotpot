@@ -1044,17 +1044,18 @@ pub fn status(root_dir: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn test_sync_tasks_links() -> anyhow::Result<()> {
         let root = temp_vuepress_root("sync-links")?;
-        fs::create_dir_all(root.join(".hotpot/workspaces/alice/tasks"))?;
-        fs::create_dir_all(root.join(".hotpot-hub/docs"))?;
+        fs::create_dir_all(root.path().join(".hotpot/workspaces/alice/tasks"))?;
+        fs::create_dir_all(root.path().join(".hotpot-hub/docs"))?;
 
-        sync_tasks_links(&root.display().to_string())?;
+        sync_tasks_links(&root.path().display().to_string())?;
 
         assert!(
-            root.join(".hotpot-hub/docs/alice")
+            root.path().join(".hotpot-hub/docs/alice")
                 .symlink_metadata()
                 .is_ok()
         );
@@ -1065,9 +1066,9 @@ mod tests {
     #[test]
     fn test_get_vuepress_user_dir_entries() -> anyhow::Result<()> {
         let root = temp_vuepress_root("entries")?;
-        fs::create_dir_all(root.join(".hotpot-hub/docs/alice"))?;
+        fs::create_dir_all(root.path().join(".hotpot-hub/docs/alice"))?;
 
-        let entries = get_vuepress_user_dir_entries(&root.display().to_string());
+        let entries = get_vuepress_user_dir_entries(&root.path().display().to_string());
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].file_name(), "alice");
         Ok(())
@@ -1076,14 +1077,14 @@ mod tests {
     #[test]
     fn test_remove_vuepress_links() -> anyhow::Result<()> {
         let root = temp_vuepress_root("remove-links")?;
-        fs::create_dir_all(root.join(".hotpot/workspaces/alice/tasks"))?;
-        fs::create_dir_all(root.join(".hotpot-hub/docs"))?;
-        sync_tasks_links(&root.display().to_string())?;
+        fs::create_dir_all(root.path().join(".hotpot/workspaces/alice/tasks"))?;
+        fs::create_dir_all(root.path().join(".hotpot-hub/docs"))?;
+        sync_tasks_links(&root.path().display().to_string())?;
 
-        remove_vuepress_links(&root.display().to_string())?;
+        remove_vuepress_links(&root.path().display().to_string())?;
 
         assert!(
-            root.join(".hotpot-hub/docs/alice")
+            root.path().join(".hotpot-hub/docs/alice")
                 .symlink_metadata()
                 .is_err()
         );
@@ -1094,12 +1095,11 @@ mod tests {
     /// Creates an isolated temporary root for VuePress filesystem tests.
     ///
     /// 为 VuePress 文件系统测试创建隔离临时根目录，避免依赖开发者本机绝对路径。
-    fn temp_vuepress_root(label: &str) -> anyhow::Result<PathBuf> {
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-        let root = std::env::temp_dir().join(format!("hotpot-vuepress-{label}-{nanos}"));
-        fs::create_dir_all(&root)?;
+    fn temp_vuepress_root(label: &str) -> anyhow::Result<TempDir> {
+        let root = tempfile::Builder::new()
+            .prefix(&format!("hotpot-vuepress-{label}-"))
+            .tempdir()?;
+        fs::create_dir_all(root.path())?;
         Ok(root)
     }
 }

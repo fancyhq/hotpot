@@ -162,8 +162,8 @@ mod tests {
 
     use super::storage::rewrite_overview_with;
     use super::*;
-    use crate::context::resolve_root_dir;
     use crate::paths::overview_file_path;
+    use tempfile::{Builder, TempDir};
 
     /// Wipes the per-username overview ledger so each test starts from a
     /// clean slate. Cargo runs tests in parallel by default, so every test
@@ -180,7 +180,8 @@ mod tests {
 
     #[test]
     fn test_get_task_list() {
-        let root_dir = resolve_root_dir(None).unwrap();
+        let root = make_isolated_project_dir("get-task-list");
+        let root_dir = root.path().display().to_string();
         let username = "test";
         let task_list = get_task_list(&root_dir, username).unwrap();
         for info in &task_list {
@@ -192,7 +193,8 @@ mod tests {
 
     #[test]
     fn test_create_task() {
-        let root_dir = resolve_root_dir(None).unwrap();
+        let root = make_isolated_project_dir("create-task");
+        let root_dir = root.path().display().to_string();
         let username = "test";
         // 用 Switch 模式避免与既有 active 行冲突；只验证创建本身能跑通。
         // Use Switch to avoid colliding with any existing active row; this
@@ -215,7 +217,8 @@ mod tests {
     /// 空 overview + Default → 新行唯一 active=true。
     #[test]
     fn test_create_default_on_empty_makes_new_row_active() {
-        let root_dir = resolve_root_dir(None).unwrap();
+        let root = make_isolated_project_dir("create-default-empty");
+        let root_dir = root.path().display().to_string();
         let username = "test_create_default_empty";
         reset_workspace(&root_dir, username);
 
@@ -234,7 +237,8 @@ mod tests {
     /// Default 遇 In-Progress active 必须 bail，且不改动台账。
     #[test]
     fn test_create_default_bails_on_in_progress_conflict() {
-        let root_dir = resolve_root_dir(None).unwrap();
+        let root = make_isolated_project_dir("create-default-conflict");
+        let root_dir = root.path().display().to_string();
         let username = "test_create_default_conflict";
         reset_workspace(&root_dir, username);
 
@@ -260,7 +264,8 @@ mod tests {
     /// Switch 模式抢占：原 In-Progress active 被清零，新行成为唯一 active。
     #[test]
     fn test_create_switch_preempts_existing_active() {
-        let root_dir = resolve_root_dir(None).unwrap();
+        let root = make_isolated_project_dir("create-switch");
+        let root_dir = root.path().display().to_string();
         let username = "test_create_switch";
         reset_workspace(&root_dir, username);
 
@@ -287,7 +292,8 @@ mod tests {
     /// Inactive 模式旁路：原 In-Progress active 保持，新行 active=false。
     #[test]
     fn test_create_inactive_keeps_existing_active() {
-        let root_dir = resolve_root_dir(None).unwrap();
+        let root = make_isolated_project_dir("create-inactive");
+        let root_dir = root.path().display().to_string();
         let username = "test_create_inactive";
         reset_workspace(&root_dir, username);
 
@@ -307,7 +313,8 @@ mod tests {
     /// 新行成为唯一 active。
     #[test]
     fn test_create_default_silently_clears_stale_active() {
-        let root_dir = resolve_root_dir(None).unwrap();
+        let root = make_isolated_project_dir("clear-stale");
+        let root_dir = root.path().display().to_string();
         let username = "test_create_clear_stale";
         reset_workspace(&root_dir, username);
 
@@ -355,7 +362,8 @@ mod tests {
     /// 新行 active=false。
     #[test]
     fn test_create_inactive_clears_stale_keeps_in_progress() {
-        let root_dir = resolve_root_dir(None).unwrap();
+        let root = make_isolated_project_dir("inactive-mixed");
+        let root_dir = root.path().display().to_string();
         let username = "test_create_inactive_mixed";
         reset_workspace(&root_dir, username);
 
@@ -421,7 +429,8 @@ mod tests {
     /// 连续两次 Default 在 In-Progress 存在时 → 两次都 bail，台账未损坏。
     #[test]
     fn test_create_default_repeat_bail_is_idempotent() {
-        let root_dir = resolve_root_dir(None).unwrap();
+        let root = make_isolated_project_dir("default-repeat");
+        let root_dir = root.path().display().to_string();
         let username = "test_create_default_repeat";
         reset_workspace(&root_dir, username);
 
@@ -461,6 +470,7 @@ mod tests {
             std::env::remove_var("HOTPOT_ALLOW_DEFAULT_USERNAME");
         }
 
+        let root_dir = root_dir.path().display().to_string();
         let _ = create_task(&root_dir, "default", "A", None, CreateMode::Default, false)
             .expect("first default create should succeed");
 
@@ -497,6 +507,7 @@ mod tests {
             std::env::remove_var("HOTPOT_ALLOW_DEFAULT_USERNAME");
         }
 
+        let root_dir = root_dir.path().display().to_string();
         let _ = create_task(&root_dir, "default", "A", None, CreateMode::Default, false).unwrap();
 
         // 用 Switch 模式 + allow_default=true：协作者守卫与 mode 守卫都让路。
@@ -532,6 +543,7 @@ mod tests {
     fn test_create_default_username_env_bypass_equivalent_to_flag() {
         let _guard = env_lock();
         let root_dir = make_isolated_project_dir("collab-env-bypass");
+        let root_dir = root_dir.path().display().to_string();
         let _ = create_task(&root_dir, "default", "A", None, CreateMode::Default, false).unwrap();
 
         // SAFETY: env mutation guarded by env_lock(); 2024 edition flags
@@ -560,15 +572,11 @@ mod tests {
     /// Allocates a unique tmp project root under `env::temp_dir()` so each
     /// test that must operate on the literal `"default"` workspace runs
     /// in isolation.
-    fn make_isolated_project_dir(label: &str) -> String {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
+    fn make_isolated_project_dir(label: &str) -> TempDir {
+        Builder::new()
+            .prefix(&format!("hotpot-task-{label}-"))
+            .tempdir()
             .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("hotpot-task-{label}-{nanos}"));
-        fs::create_dir_all(&dir).unwrap();
-        dir.display().to_string()
     }
 
     /// Serializes any test that reads or writes `HOTPOT_ALLOW_DEFAULT_USERNAME`.
@@ -600,7 +608,7 @@ mod tests {
 
         // 独立 username + 临时 root_dir，避免与其他并发测试争抢同一台账。
         let root_dir = make_isolated_project_dir("concurrent-create");
-        let root_dir = Arc::new(root_dir);
+        let root_dir = Arc::new(root_dir.path().display().to_string());
         let username = "concurrent_user";
         // 一条 Default seed 行让后续 Inactive 创建有意义（Inactive 必须
         // 看到一条 In-Progress active 才不退化为 Default）。
@@ -712,7 +720,8 @@ mod tests {
     /// `get_active_task_filepath` 遇 >1 条 active 应 bail 列出 id。
     #[test]
     fn test_get_active_task_filepath_rejects_multi_active() {
-        let root_dir = resolve_root_dir(None).unwrap();
+        let root = make_isolated_project_dir("active-multi-guard");
+        let root_dir = root.path().display().to_string();
         let username = "test_active_multi_guard";
         reset_workspace(&root_dir, username);
 

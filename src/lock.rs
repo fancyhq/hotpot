@@ -169,22 +169,22 @@ mod tests {
         sync::{Arc, Mutex},
         thread,
     };
+    use tempfile::{Builder, TempDir};
 
-    fn temp_data_path(label: &str) -> std::path::PathBuf {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("hotpot-lock-{label}-{nanos}"));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir.join("data.jsonl")
+    fn temp_data_path(label: &str) -> (TempDir, std::path::PathBuf) {
+        let dir = Builder::new()
+            .prefix(&format!("hotpot-lock-{label}-"))
+            .tempdir()
+            .unwrap();
+        std::fs::create_dir_all(dir.path()).unwrap();
+        let path = dir.path().join("data.jsonl");
+        (dir, path)
     }
 
     /// 锁释放后再取应当立刻成功。
     #[test]
     fn lock_releases_after_op() {
-        let data = temp_data_path("releases");
+        let (_dir, data) = temp_data_path("releases");
         let result = with_file_lock(&data, || Ok(42)).unwrap();
         assert_eq!(result, 42);
         // 二次取锁不应等待。
@@ -196,7 +196,7 @@ mod tests {
     /// 不重叠（用 Mutex 计数 in-flight 操作验证）。
     #[test]
     fn concurrent_threads_serialize() {
-        let data = temp_data_path("serialize");
+        let (_dir, data) = temp_data_path("serialize");
         let in_flight = Arc::new(Mutex::new(0u32));
         let observed_max = Arc::new(Mutex::new(0u32));
 
@@ -240,7 +240,7 @@ mod tests {
     /// 锁文件创建在 data_path 旁，文件名带 `.lock` 后缀。
     #[test]
     fn lock_sidecar_path_is_data_path_plus_lock() {
-        let data = temp_data_path("sidecar");
+        let (_dir, data) = temp_data_path("sidecar");
         with_file_lock(&data, || Ok(())).unwrap();
         let expected = std::path::PathBuf::from(format!("{}.lock", data.display()));
         assert!(

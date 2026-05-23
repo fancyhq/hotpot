@@ -32,7 +32,7 @@ Every command is **manually triggered** by the user. Hotpot never spawns automat
 │   ├── issues.jsonl                     # Shared, long-lived memory
 │   ├── issue-candidates.jsonl           # Shared, temporary review-memory candidates
 │   ├── prompts/                         # Installed prompt assets (do not edit)
-│   ├── brainstorm/<session>/            # Transient visual-companion artifacts
+│   ├── brainstorm/<session>/            # Transient visual-companion artifacts; stop prunes brainstorm session dirs
 │   └── workspaces/<username>/
 │       ├── overview.jsonl
 │       └── tasks/<YYYY-MM-DD>-<title>.md

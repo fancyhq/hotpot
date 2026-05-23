@@ -536,6 +536,7 @@ pub enum VuepressEnabledSource {
 
 impl VuepressEnabledSource {
     /// JSON / 摘要输出用的稳定字符串标签。
+    #[allow(unused)]
     pub fn as_str(&self) -> &'static str {
         match self {
             VuepressEnabledSource::Env => "env",
@@ -609,6 +610,7 @@ pub enum VuepressPortSource {
 
 impl VuepressPortSource {
     /// JSON / 摘要输出用的稳定字符串标签。
+    #[allow(unused)]
     pub fn as_str(&self) -> &'static str {
         match self {
             VuepressPortSource::Env => "env",
@@ -789,12 +791,12 @@ mod tests {
     //! collide with the real project state.
     use std::{
         fs,
-        path::PathBuf,
+        path::Path,
         sync::{Mutex, MutexGuard},
-        time::{SystemTime, UNIX_EPOCH},
     };
 
     use super::*;
+    use tempfile::{Builder, TempDir};
 
     /// 串行化所有触碰 `HOTPOT_LANGUAGE` 的测试。
     fn env_lock() -> MutexGuard<'static, ()> {
@@ -803,18 +805,17 @@ mod tests {
     }
 
     /// 创建唯一临时项目根目录。
-    fn unique_root(label: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = env::temp_dir().join(format!("hotpot-lang-{label}-{nanos}"));
-        fs::create_dir_all(dir.join(".hotpot")).unwrap();
+    fn unique_root(label: &str) -> TempDir {
+        let dir = Builder::new()
+            .prefix(&format!("hotpot-lang-{label}-"))
+            .tempdir()
+            .unwrap();
+        fs::create_dir_all(dir.path().join(".hotpot")).unwrap();
         dir
     }
 
     /// 在 `<root>/.hotpot/config.toml` 写指定原始内容。
-    fn write_config(root: &PathBuf, contents: &str) {
+    fn write_config(root: &Path, contents: &str) {
         fs::write(root.join(".hotpot/config.toml"), contents).unwrap();
     }
 
@@ -831,7 +832,7 @@ mod tests {
         // 无 config.toml，仅靠 env 命中。
         unsafe { env::set_var("HOTPOT_LANGUAGE", "简体中文") };
 
-        let (lang, source) = resolve_language_with_source(&root.display().to_string());
+        let (lang, source) = resolve_language_with_source(&root.path().display().to_string());
         assert_eq!(lang, "简体中文");
         assert_eq!(source, LanguageSource::Env);
 
@@ -843,9 +844,9 @@ mod tests {
         let _guard = env_lock();
         unsafe { clear_lang_env() };
         let root = unique_root("config-toml");
-        write_config(&root, "language = \"日本語\"\n");
+        write_config(root.path(), "language = \"日本語\"\n");
 
-        let (lang, source) = resolve_language_with_source(&root.display().to_string());
+        let (lang, source) = resolve_language_with_source(&root.path().display().to_string());
         assert_eq!(lang, "日本語");
         assert_eq!(source, LanguageSource::ConfigToml);
     }
@@ -857,11 +858,11 @@ mod tests {
         let root = unique_root("commented-default");
         // 模拟 hotpot-config.toml 模板原状：language 行被注释。
         write_config(
-            &root,
+            root.path(),
             "# Hotpot project configuration.\n# language = \"English\"\n",
         );
 
-        let (lang, source) = resolve_language_with_source(&root.display().to_string());
+        let (lang, source) = resolve_language_with_source(&root.path().display().to_string());
         assert_eq!(lang, "English");
         assert_eq!(source, LanguageSource::Default);
     }
@@ -871,9 +872,9 @@ mod tests {
         let _guard = env_lock();
         unsafe { clear_lang_env() };
         let root = unique_root("empty-value");
-        write_config(&root, "language = \"\"\n");
+        write_config(root.path(), "language = \"\"\n");
 
-        let (lang, source) = resolve_language_with_source(&root.display().to_string());
+        let (lang, source) = resolve_language_with_source(&root.path().display().to_string());
         assert_eq!(lang, "English");
         assert_eq!(source, LanguageSource::Default);
     }
@@ -884,9 +885,9 @@ mod tests {
         unsafe { clear_lang_env() };
         let root = unique_root("corrupt-toml");
         // 故意写入未闭合引号的 TOML，确认解析器 None 之后我们回退到 English。
-        write_config(&root, "language = \"unterminated\nfoo = bar baz\n");
+        write_config(root.path(), "language = \"unterminated\nfoo = bar baz\n");
 
-        let (lang, source) = resolve_language_with_source(&root.display().to_string());
+        let (lang, source) = resolve_language_with_source(&root.path().display().to_string());
         assert_eq!(lang, "English");
         assert_eq!(source, LanguageSource::Default);
     }
@@ -895,10 +896,10 @@ mod tests {
     fn env_beats_config() {
         let _guard = env_lock();
         let root = unique_root("env-beats-config");
-        write_config(&root, "language = \"日本語\"\n");
+        write_config(root.path(), "language = \"日本語\"\n");
         unsafe { env::set_var("HOTPOT_LANGUAGE", "Français") };
 
-        let (lang, source) = resolve_language_with_source(&root.display().to_string());
+        let (lang, source) = resolve_language_with_source(&root.path().display().to_string());
         assert_eq!(lang, "Français");
         assert_eq!(source, LanguageSource::Env);
 
@@ -910,9 +911,9 @@ mod tests {
         let _guard = env_lock();
         unsafe { clear_lang_env() };
         let root = unique_root("whitespace");
-        write_config(&root, "language = \"   简体中文   \"\n");
+        write_config(root.path(), "language = \"   简体中文   \"\n");
 
-        let (lang, _source) = resolve_language_with_source(&root.display().to_string());
+        let (lang, _source) = resolve_language_with_source(&root.path().display().to_string());
         assert_eq!(lang, "简体中文");
     }
 
@@ -922,7 +923,7 @@ mod tests {
         unsafe { clear_lang_env() };
         let root = unique_root("missing-file");
         // 不写 config.toml，跑解析。
-        let (lang, source) = resolve_language_with_source(&root.display().to_string());
+        let (lang, source) = resolve_language_with_source(&root.path().display().to_string());
         assert_eq!(lang, "English");
         assert_eq!(source, LanguageSource::Default);
     }
@@ -936,7 +937,7 @@ mod tests {
         }
         let root = unique_root("global-candidates");
 
-        let context = Context::resolve(Some(root)).unwrap();
+        let context = Context::resolve(Some(root.path().to_path_buf())).unwrap();
 
         assert!(
             context
@@ -960,8 +961,10 @@ mod tests {
             env::remove_var("HOTPOT_USERNAME");
         }
         let root = unique_root("ensure-migrates-candidates");
-        let root_dir = root.display().to_string();
-        let legacy = root.join(".hotpot/workspaces/alice/issue-candidates.jsonl");
+        let root_dir = root.path().display().to_string();
+        let legacy = root
+            .path()
+            .join(".hotpot/workspaces/alice/issue-candidates.jsonl");
         fs::create_dir_all(legacy.parent().unwrap()).unwrap();
         fs::write(
             &legacy,
@@ -969,10 +972,10 @@ mod tests {
         )
         .unwrap();
 
-        let context = Context::resolve(Some(root.clone())).unwrap();
+        let context = Context::resolve(Some(root.path().to_path_buf())).unwrap();
         context.ensure_issue_candidates_file().unwrap();
 
-        let global = root.join(".hotpot/issue-candidates.jsonl");
+        let global = root.path().join(".hotpot/issue-candidates.jsonl");
         let content = fs::read_to_string(&global).unwrap();
         assert!(
             content.contains("legacy candidate invisible"),
@@ -1000,9 +1003,9 @@ mod tests {
         let _guard = env_lock();
         unsafe { clear_lang_env() };
         let root = unique_root("non-string");
-        write_config(&root, "language = 42\n");
+        write_config(root.path(), "language = 42\n");
 
-        let (lang, source) = resolve_language_with_source(&root.display().to_string());
+        let (lang, source) = resolve_language_with_source(&root.path().display().to_string());
         assert_eq!(lang, "English");
         assert_eq!(source, LanguageSource::Default);
     }
@@ -1021,7 +1024,8 @@ mod tests {
         let root = unique_root("vp-enabled-env");
         unsafe { env::set_var("HOTPOT_VUEPRESS_ENABLED", "true") };
 
-        let (enabled, source) = resolve_vuepress_enabled_with_source(&root.display().to_string());
+        let (enabled, source) =
+            resolve_vuepress_enabled_with_source(&root.path().display().to_string());
         assert!(enabled);
         assert_eq!(source, VuepressEnabledSource::Env);
 
@@ -1033,9 +1037,10 @@ mod tests {
         let _guard = env_lock();
         unsafe { clear_vuepress_env() };
         let root = unique_root("vp-enabled-config");
-        write_config(&root, "[vuepress]\nenabled = true\nport = 8080\n");
+        write_config(root.path(), "[vuepress]\nenabled = true\nport = 8080\n");
 
-        let (enabled, source) = resolve_vuepress_enabled_with_source(&root.display().to_string());
+        let (enabled, source) =
+            resolve_vuepress_enabled_with_source(&root.path().display().to_string());
         assert!(enabled);
         assert_eq!(source, VuepressEnabledSource::ConfigToml);
     }
@@ -1046,7 +1051,8 @@ mod tests {
         unsafe { clear_vuepress_env() };
         let root = unique_root("vp-enabled-default");
         // 既无 env 也无 config.toml，应回退到字面量 false。
-        let (enabled, source) = resolve_vuepress_enabled_with_source(&root.display().to_string());
+        let (enabled, source) =
+            resolve_vuepress_enabled_with_source(&root.path().display().to_string());
         assert!(!enabled);
         assert_eq!(source, VuepressEnabledSource::Default);
     }
@@ -1057,7 +1063,8 @@ mod tests {
         let root = unique_root("vp-enabled-case");
         unsafe { env::set_var("HOTPOT_VUEPRESS_ENABLED", "  TRUE  ") };
 
-        let (enabled, _source) = resolve_vuepress_enabled_with_source(&root.display().to_string());
+        let (enabled, _source) =
+            resolve_vuepress_enabled_with_source(&root.path().display().to_string());
         assert!(enabled);
 
         unsafe { clear_vuepress_env() };
@@ -1070,10 +1077,11 @@ mod tests {
         // 模拟用户把 enabled 写成 "yes"——不在 {"true","false"} 集合内应当
         // 当作 None，让链路落到 config.toml；这里 config.toml 也缺，最终为
         // Default(false)。
-        write_config(&root, "# no vuepress table\n");
+        write_config(root.path(), "# no vuepress table\n");
         unsafe { env::set_var("HOTPOT_VUEPRESS_ENABLED", "yes") };
 
-        let (enabled, source) = resolve_vuepress_enabled_with_source(&root.display().to_string());
+        let (enabled, source) =
+            resolve_vuepress_enabled_with_source(&root.path().display().to_string());
         assert!(!enabled);
         assert_eq!(source, VuepressEnabledSource::Default);
 
@@ -1086,7 +1094,7 @@ mod tests {
         let root = unique_root("vp-port-env");
         unsafe { env::set_var("HOTPOT_VUEPRESS_PORT", "9527") };
 
-        let (port, source) = resolve_vuepress_port_with_source(&root.display().to_string());
+        let (port, source) = resolve_vuepress_port_with_source(&root.path().display().to_string());
         assert_eq!(port, 9527);
         assert_eq!(source, VuepressPortSource::Env);
 
@@ -1098,9 +1106,9 @@ mod tests {
         let _guard = env_lock();
         unsafe { clear_vuepress_env() };
         let root = unique_root("vp-port-config");
-        write_config(&root, "[vuepress]\nenabled = true\nport = 4321\n");
+        write_config(root.path(), "[vuepress]\nenabled = true\nport = 4321\n");
 
-        let (port, source) = resolve_vuepress_port_with_source(&root.display().to_string());
+        let (port, source) = resolve_vuepress_port_with_source(&root.path().display().to_string());
         assert_eq!(port, 4321);
         assert_eq!(source, VuepressPortSource::ConfigToml);
     }
@@ -1110,7 +1118,7 @@ mod tests {
         let _guard = env_lock();
         unsafe { clear_vuepress_env() };
         let root = unique_root("vp-port-default");
-        let (port, source) = resolve_vuepress_port_with_source(&root.display().to_string());
+        let (port, source) = resolve_vuepress_port_with_source(&root.path().display().to_string());
         assert_eq!(port, VUEPRESS_PORT_DEFAULT);
         assert_eq!(source, VuepressPortSource::Default);
     }
@@ -1122,9 +1130,9 @@ mod tests {
         let root = unique_root("vp-port-overflow");
         // 70000 超出 u16 范围，应当被解析器拒绝并继续走链路；config.toml
         // 也无该字段，最终落到 Default(8080)。
-        write_config(&root, "[vuepress]\nport = 70000\n");
+        write_config(root.path(), "[vuepress]\nport = 70000\n");
 
-        let (port, source) = resolve_vuepress_port_with_source(&root.display().to_string());
+        let (port, source) = resolve_vuepress_port_with_source(&root.path().display().to_string());
         assert_eq!(port, VUEPRESS_PORT_DEFAULT);
         assert_eq!(source, VuepressPortSource::Default);
     }

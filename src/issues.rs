@@ -969,21 +969,18 @@ pub fn render_relevant_issues_to_markdown(
 
 #[cfg(test)]
 mod tests {
-    use crate::context::resolve_root_dir;
-
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use tempfile::{Builder, TempDir};
 
     /// Creates a unique temporary project root for issue tests.
     ///
     /// 为 issue 测试创建唯一临时项目根目录，避免污染真实仓库状态。
-    fn unique_issue_root(label: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("hotpot-issues-{label}-{nanos}"));
-        fs::create_dir_all(root.join(".hotpot")).unwrap();
+    fn unique_issue_root(label: &str) -> TempDir {
+        let root = Builder::new()
+            .prefix(&format!("hotpot-issues-{label}-"))
+            .tempdir()
+            .unwrap();
+        fs::create_dir_all(root.path().join(".hotpot")).unwrap();
         root
     }
 
@@ -1001,14 +998,6 @@ mod tests {
             validation: vec![String::from("cargo test issues::tests -- --nocapture")],
             promote_hint: String::from("JSONL validation review memory"),
         }
-    }
-
-    #[test]
-    fn test_render_issues_to_markdown() {
-        let root_dir = resolve_root_dir(None).unwrap();
-        let markdown = render_issues_to_markdown(&root_dir).unwrap();
-        let markdown_path = format!("{}/issues.md", root_dir);
-        fs::write(markdown_path, markdown).unwrap();
     }
 
     #[test]
@@ -1082,7 +1071,8 @@ mod tests {
 
     #[test]
     fn test_issue_candidates_jsonl() {
-        let root_dir = unique_issue_root("jsonl").display().to_string();
+        let root = unique_issue_root("jsonl");
+        let root_dir = root.path().display().to_string();
         let username = "test_issue_candidates_jsonl";
         let candidate = test_candidate("user reported JSONL parsing failure");
 
@@ -1104,9 +1094,9 @@ mod tests {
     #[test]
     fn migrates_legacy_workspace_candidates_to_global_file() {
         let root = unique_issue_root("legacy-migration");
-        let root_dir = root.display().to_string();
-        let alice_legacy = root.join(".hotpot/workspaces/alice/issue-candidates.jsonl");
-        let bob_legacy = root.join(".hotpot/workspaces/bob/issue-candidates.jsonl");
+        let root_dir = root.path().display().to_string();
+        let alice_legacy = root.path().join(".hotpot/workspaces/alice/issue-candidates.jsonl");
+        let bob_legacy = root.path().join(".hotpot/workspaces/bob/issue-candidates.jsonl");
         fs::create_dir_all(alice_legacy.parent().unwrap()).unwrap();
         fs::create_dir_all(bob_legacy.parent().unwrap()).unwrap();
 
@@ -1126,7 +1116,7 @@ mod tests {
         let candidates = get_issue_candidates_list(&root_dir, "alice").unwrap();
         assert_eq!(candidates.len(), 2);
 
-        let global_path = root.join(".hotpot/issue-candidates.jsonl");
+        let global_path = root.path().join(".hotpot/issue-candidates.jsonl");
         let global_content = fs::read_to_string(&global_path).unwrap();
         assert_eq!(
             global_content
@@ -1154,15 +1144,15 @@ mod tests {
     #[test]
     fn failed_global_append_keeps_legacy_candidates() {
         let root = unique_issue_root("legacy-append-failure");
-        let root_dir = root.display().to_string();
-        let legacy = root.join(".hotpot/workspaces/alice/issue-candidates.jsonl");
+        let root_dir = root.path().display().to_string();
+        let legacy = root.path().join(".hotpot/workspaces/alice/issue-candidates.jsonl");
         fs::create_dir_all(legacy.parent().unwrap()).unwrap();
 
         let candidate = test_candidate("legacy candidate must survive append failure");
         let legacy_line = format!("{}\n", serde_json::to_string(&candidate).unwrap());
         fs::write(&legacy, &legacy_line).unwrap();
 
-        let global_path = root.join(".hotpot/issue-candidates.jsonl");
+        let global_path = root.path().join(".hotpot/issue-candidates.jsonl");
         fs::create_dir_all(&global_path).unwrap();
 
         let err = migrate_legacy_issue_candidates(&root_dir, &global_path)
@@ -1181,8 +1171,8 @@ mod tests {
     #[test]
     fn staged_legacy_candidate_is_not_migrated_twice_after_append_success() {
         let root = unique_issue_root("legacy-staged-idempotent");
-        let root_dir = root.display().to_string();
-        let legacy = root.join(".hotpot/workspaces/alice/issue-candidates.jsonl");
+        let root_dir = root.path().display().to_string();
+        let legacy = root.path().join(".hotpot/workspaces/alice/issue-candidates.jsonl");
         fs::create_dir_all(legacy.parent().unwrap()).unwrap();
 
         let candidate = test_candidate("staged legacy candidate migrates once");
@@ -1192,7 +1182,7 @@ mod tests {
         let done = legacy_unique_done_path(&legacy);
         fs::rename(&legacy, &done).unwrap();
 
-        let global_path = root.join(".hotpot/issue-candidates.jsonl");
+        let global_path = root.path().join(".hotpot/issue-candidates.jsonl");
         fs::write(&global_path, &legacy_line).unwrap();
 
         migrate_legacy_issue_candidates(&root_dir, &global_path).unwrap();
@@ -1215,8 +1205,8 @@ mod tests {
     #[test]
     fn orphan_staging_merges_with_existing_legacy_before_migration() {
         let root = unique_issue_root("legacy-orphan-staging-merge");
-        let root_dir = root.display().to_string();
-        let legacy = root.join(".hotpot/workspaces/alice/issue-candidates.jsonl");
+        let root_dir = root.path().display().to_string();
+        let legacy = root.path().join(".hotpot/workspaces/alice/issue-candidates.jsonl");
         fs::create_dir_all(legacy.parent().unwrap()).unwrap();
 
         let legacy_line = format!(
@@ -1231,7 +1221,7 @@ mod tests {
         let staging = legacy.with_file_name(".issue-candidates.jsonl.hotpot-staging.leftover");
         fs::write(&staging, &staging_line).unwrap();
 
-        let global_path = root.join(".hotpot/issue-candidates.jsonl");
+        let global_path = root.path().join(".hotpot/issue-candidates.jsonl");
         fs::write(&global_path, "").unwrap();
 
         migrate_legacy_issue_candidates(&root_dir, &global_path).unwrap();
@@ -1255,8 +1245,8 @@ mod tests {
     #[test]
     fn stale_done_marker_does_not_block_later_legacy_migration() {
         let root = unique_issue_root("legacy-stale-done");
-        let root_dir = root.display().to_string();
-        let legacy = root.join(".hotpot/workspaces/alice/issue-candidates.jsonl");
+        let root_dir = root.path().display().to_string();
+        let legacy = root.path().join(".hotpot/workspaces/alice/issue-candidates.jsonl");
         fs::create_dir_all(legacy.parent().unwrap()).unwrap();
 
         let stale_done = legacy.with_file_name(".issue-candidates.jsonl.hotpot-migrated.leftover");
@@ -1267,7 +1257,7 @@ mod tests {
         );
         fs::write(&legacy, &legacy_line).unwrap();
 
-        let global_path = root.join(".hotpot/issue-candidates.jsonl");
+        let global_path = root.path().join(".hotpot/issue-candidates.jsonl");
         fs::write(&global_path, "").unwrap();
 
         migrate_legacy_issue_candidates(&root_dir, &global_path).unwrap();
@@ -1290,8 +1280,8 @@ mod tests {
     #[test]
     fn orphan_staging_already_in_global_is_not_restored_or_duplicated() {
         let root = unique_issue_root("legacy-staging-already-global");
-        let root_dir = root.display().to_string();
-        let legacy = root.join(".hotpot/workspaces/alice/issue-candidates.jsonl");
+        let root_dir = root.path().display().to_string();
+        let legacy = root.path().join(".hotpot/workspaces/alice/issue-candidates.jsonl");
         fs::create_dir_all(legacy.parent().unwrap()).unwrap();
 
         let legacy_line = format!(
@@ -1302,7 +1292,7 @@ mod tests {
         let staging = legacy_unique_staging_path(&legacy);
         fs::write(&staging, &legacy_line).unwrap();
 
-        let global_path = root.join(".hotpot/issue-candidates.jsonl");
+        let global_path = root.path().join(".hotpot/issue-candidates.jsonl");
         fs::write(&global_path, &legacy_line).unwrap();
 
         migrate_legacy_issue_candidates(&root_dir, &global_path).unwrap();
@@ -1329,8 +1319,8 @@ mod tests {
     #[test]
     fn orphan_staging_commit_check_preserves_duplicate_row_counts() {
         let root = unique_issue_root("legacy-staging-duplicate-counts");
-        let root_dir = root.display().to_string();
-        let legacy = root.join(".hotpot/workspaces/alice/issue-candidates.jsonl");
+        let root_dir = root.path().display().to_string();
+        let legacy = root.path().join(".hotpot/workspaces/alice/issue-candidates.jsonl");
         fs::create_dir_all(legacy.parent().unwrap()).unwrap();
 
         let row = format!(
@@ -1341,7 +1331,7 @@ mod tests {
         let staging = legacy_unique_staging_path(&legacy);
         fs::write(&staging, format!("{row}{row}")).unwrap();
 
-        let global_path = root.join(".hotpot/issue-candidates.jsonl");
+        let global_path = root.path().join(".hotpot/issue-candidates.jsonl");
         fs::write(&global_path, &row).unwrap();
 
         migrate_legacy_issue_candidates(&root_dir, &global_path).unwrap();
@@ -1364,9 +1354,9 @@ mod tests {
     #[test]
     fn multiple_orphan_staging_files_share_global_duplicate_counts() {
         let root = unique_issue_root("legacy-staging-shared-duplicate-counts");
-        let root_dir = root.display().to_string();
-        let alice_legacy = root.join(".hotpot/workspaces/alice/issue-candidates.jsonl");
-        let bob_legacy = root.join(".hotpot/workspaces/bob/issue-candidates.jsonl");
+        let root_dir = root.path().display().to_string();
+        let alice_legacy = root.path().join(".hotpot/workspaces/alice/issue-candidates.jsonl");
+        let bob_legacy = root.path().join(".hotpot/workspaces/bob/issue-candidates.jsonl");
         fs::create_dir_all(alice_legacy.parent().unwrap()).unwrap();
         fs::create_dir_all(bob_legacy.parent().unwrap()).unwrap();
 
@@ -1382,7 +1372,7 @@ mod tests {
         fs::write(&alice_staging, &row).unwrap();
         fs::write(&bob_staging, &row).unwrap();
 
-        let global_path = root.join(".hotpot/issue-candidates.jsonl");
+        let global_path = root.path().join(".hotpot/issue-candidates.jsonl");
         fs::write(&global_path, &row).unwrap();
 
         migrate_legacy_issue_candidates(&root_dir, &global_path).unwrap();
@@ -1403,8 +1393,8 @@ mod tests {
     #[test]
     fn orphan_staging_merge_preserves_duplicate_row_counts() {
         let root = unique_issue_root("legacy-orphan-duplicate-counts");
-        let root_dir = root.display().to_string();
-        let legacy = root.join(".hotpot/workspaces/alice/issue-candidates.jsonl");
+        let root_dir = root.path().display().to_string();
+        let legacy = root.path().join(".hotpot/workspaces/alice/issue-candidates.jsonl");
         fs::create_dir_all(legacy.parent().unwrap()).unwrap();
 
         let row = format!(
@@ -1416,7 +1406,7 @@ mod tests {
         let staging = legacy_unique_staging_path(&legacy);
         fs::write(&staging, format!("{row}{row}")).unwrap();
 
-        let global_path = root.join(".hotpot/issue-candidates.jsonl");
+        let global_path = root.path().join(".hotpot/issue-candidates.jsonl");
         fs::write(&global_path, "").unwrap();
 
         migrate_legacy_issue_candidates(&root_dir, &global_path).unwrap();
@@ -1436,8 +1426,8 @@ mod tests {
     #[test]
     fn migration_appends_after_global_without_trailing_newline() {
         let root = unique_issue_root("legacy-global-no-newline");
-        let root_dir = root.display().to_string();
-        let legacy = root.join(".hotpot/workspaces/alice/issue-candidates.jsonl");
+        let root_dir = root.path().display().to_string();
+        let legacy = root.path().join(".hotpot/workspaces/alice/issue-candidates.jsonl");
         fs::create_dir_all(legacy.parent().unwrap()).unwrap();
 
         let existing = test_candidate("existing global without newline");
@@ -1448,7 +1438,7 @@ mod tests {
         )
         .unwrap();
 
-        let global_path = root.join(".hotpot/issue-candidates.jsonl");
+        let global_path = root.path().join(".hotpot/issue-candidates.jsonl");
         fs::write(&global_path, serde_json::to_string(&existing).unwrap()).unwrap();
 
         let candidates = get_issue_candidates_list(&root_dir, "alice").unwrap();
@@ -1467,8 +1457,8 @@ mod tests {
     #[test]
     fn orphan_staging_appends_after_legacy_without_trailing_newline() {
         let root = unique_issue_root("legacy-orphan-no-newline");
-        let root_dir = root.display().to_string();
-        let legacy = root.join(".hotpot/workspaces/alice/issue-candidates.jsonl");
+        let root_dir = root.path().display().to_string();
+        let legacy = root.path().join(".hotpot/workspaces/alice/issue-candidates.jsonl");
         fs::create_dir_all(legacy.parent().unwrap()).unwrap();
 
         let existing = test_candidate("existing legacy without newline");
@@ -1481,7 +1471,7 @@ mod tests {
         )
         .unwrap();
 
-        let global_path = root.join(".hotpot/issue-candidates.jsonl");
+        let global_path = root.path().join(".hotpot/issue-candidates.jsonl");
         fs::write(&global_path, "").unwrap();
 
         let candidates = get_issue_candidates_list(&root_dir, "alice").unwrap();
@@ -1500,11 +1490,11 @@ mod tests {
     #[test]
     fn append_candidate_after_global_without_trailing_newline_keeps_jsonl_valid() {
         let root = unique_issue_root("candidate-append-no-newline");
-        let root_dir = root.display().to_string();
+        let root_dir = root.path().display().to_string();
         let username = "append-no-newline";
         let existing = test_candidate("existing candidate without newline");
         let appended = test_candidate("candidate appended after missing newline");
-        let global_path = root.join(".hotpot/issue-candidates.jsonl");
+        let global_path = root.path().join(".hotpot/issue-candidates.jsonl");
         fs::create_dir_all(global_path.parent().unwrap()).unwrap();
         fs::write(&global_path, serde_json::to_string(&existing).unwrap()).unwrap();
 
@@ -1525,8 +1515,8 @@ mod tests {
     #[test]
     fn orphan_staging_restores_missing_legacy_before_migration() {
         let root = unique_issue_root("legacy-orphan-staging-restore");
-        let root_dir = root.display().to_string();
-        let legacy = root.join(".hotpot/workspaces/alice/issue-candidates.jsonl");
+        let root_dir = root.path().display().to_string();
+        let legacy = root.path().join(".hotpot/workspaces/alice/issue-candidates.jsonl");
         fs::create_dir_all(legacy.parent().unwrap()).unwrap();
 
         let legacy_line = format!(
@@ -1536,7 +1526,7 @@ mod tests {
         let staging = legacy_unique_staging_path(&legacy);
         fs::write(&staging, &legacy_line).unwrap();
 
-        let global_path = root.join(".hotpot/issue-candidates.jsonl");
+        let global_path = root.path().join(".hotpot/issue-candidates.jsonl");
         fs::write(&global_path, "").unwrap();
 
         migrate_legacy_issue_candidates(&root_dir, &global_path).unwrap();
@@ -1564,19 +1554,13 @@ mod tests {
     fn test_concurrent_append_issue_does_not_lose_rows() {
         use std::sync::Arc;
         use std::thread;
-        use std::time::{SystemTime, UNIX_EPOCH};
 
         // 自有 tmp root 避免污染仓库根 `.hotpot/issues.jsonl`，并让本测试
-        // 与并发跑的 `test_render_issues_to_markdown` 互不干扰。
+        // 与其它并发 issue 测试互不干扰。
         // Isolated tmp root so we don't pollute the repo's issues.jsonl
-        // (and don't race with the markdown-render test).
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let tmp_root = std::env::temp_dir().join(format!("hotpot-issues-concurrent-{nanos}"));
-        fs::create_dir_all(tmp_root.join(".hotpot")).unwrap();
-        let root_dir = Arc::new(tmp_root.display().to_string());
+        // and keep this test isolated from other concurrent issue writes.
+        let tmp_root = unique_issue_root("concurrent");
+        let root_dir = Arc::new(tmp_root.path().display().to_string());
 
         const THREADS: u32 = 8;
         let handles: Vec<_> = (0..THREADS)

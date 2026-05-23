@@ -252,21 +252,6 @@ pub fn install_vuepress_hub(
     )
 }
 
-/// Returns the project-relative paths registered in [`vuepress_hub::VUEPRESS_HUB_ASSETS`].
-///
-/// `hotpot vuepress uninstall` uses this to know exactly which paths to
-/// reverse, so removal stays in sync with the install catalog without
-/// duplicating the file list elsewhere.
-///
-/// 返回 [`vuepress_hub::VUEPRESS_HUB_ASSETS`] 中所有资产的项目相对路径。
-/// `hotpot vuepress uninstall` 通过它精确反向回滚，避免在 vuepress 模块
-/// 重复维护文件清单。
-pub fn vuepress_hub_paths() -> impl Iterator<Item = &'static str> {
-    vuepress_hub::VUEPRESS_HUB_ASSETS
-        .iter()
-        .map(|asset| asset.path)
-}
-
 /// Installs the VuePress opt-in prompt assets under
 /// `<project_dir>/.hotpot/prompts/`.
 ///

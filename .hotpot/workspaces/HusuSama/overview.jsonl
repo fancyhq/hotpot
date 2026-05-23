@@ -13,3 +13,4 @@
 {"time":"2026-05-21","task_id":"TtVGuuw9Yr","title":"migrate-pi-commands-to-extension","commit":null,"status":"In Progress","active":false}
 {"time":"2026-05-21","task_id":"1OxeIwhj7g","title":"pi-fix-weak-model-task-handoff","commit":"af1487a","status":"Done","active":false}
 {"time":"2026-05-22","task_id":"2Prmow0FQ1","title":"guard-pi-hotpot-first-tool-call","commit":"f8fe8e1ebf6e68e2b350f13a7644873e9a1b793a","status":"Done","active":false}
+{"time":"2026-05-23","task_id":"okzInSJt72","title":"cleanup-test-artifacts-and-cache","commit":"e5d92b7f2264d5ec8f970311f7b2d9de155cb8df","status":"Done","active":false}

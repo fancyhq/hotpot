@@ -69,6 +69,13 @@ pub struct UpdateArgs {
     #[arg(long = "dry-run")]
     dry_run: bool,
 
+    /// Overwrite existing Hotpot-private files when their contents differ.
+    /// Merge-strategy files still merge and user-owned seeds remain untouched.
+    ///
+    /// 内容不同时覆盖 Hotpot 私有文件；merge 策略文件仍合并，用户自有 seed 仍不覆盖。
+    #[arg(long)]
+    force: bool,
+
     /// Emit a JSON summary instead of human-readable output.
     ///
     /// 以 JSON 形式输出汇总（默认人类可读）。
@@ -157,6 +164,8 @@ pub fn update(args: UpdateArgs) -> Result<()> {
 /// Runs the full update pipeline and returns a structured [`UpdateReport`].
 /// Pure data path so it can be unit-tested without stdout capture.
 pub(crate) fn build_report(args: UpdateArgs) -> Result<UpdateReport> {
+    let force = args.force;
+    let dry_run = args.dry_run;
     // 与 `hotpot init` 保持一致：用 `dunce::canonicalize` 规避 Windows
     // 的 `\\?\` verbatim 前缀，避免污染后续写入 env-var 的派生路径。
     // Mirror `hotpot init`: `dunce::canonicalize` strips the Windows
@@ -203,8 +212,8 @@ pub(crate) fn build_report(args: UpdateArgs) -> Result<UpdateReport> {
         let stats = assets::install_for(
             &project_dir,
             *platform,
-            /* force */ false,
-            args.dry_run,
+            force,
+            dry_run,
             verbose_per_asset,
         )
         .with_context(|| format!("failed to refresh platform {}", platform.slug()))?;
@@ -238,8 +247,8 @@ pub(crate) fn build_report(args: UpdateArgs) -> Result<UpdateReport> {
     let vuepress_prompts_updated: Vec<String> = if vuepress_enabled {
         let stats = assets::install_vuepress_prompts(
             &project_dir,
-            /* force */ false,
-            args.dry_run,
+            force,
+            dry_run,
             verbose_per_asset,
         )
         .context("failed to refresh VuePress opt-in prompts")?;
@@ -255,7 +264,7 @@ pub(crate) fn build_report(args: UpdateArgs) -> Result<UpdateReport> {
     // ── 5. 创建 workspace 骨架 ────────────────────────────────────────────
     let workspace_path = paths::workspace_dir(&root_dir, &username);
     let workspace_existed = workspace_path.is_dir();
-    if !args.dry_run {
+    if !dry_run {
         workspace::ensure_workspace_skeleton(&root_dir, &username)
             .context("failed to bootstrap workspace skeleton")?;
     }
@@ -275,7 +284,7 @@ pub(crate) fn build_report(args: UpdateArgs) -> Result<UpdateReport> {
     // still completes; the consistency self-check below surfaces the
     // real "hub missing" problem with a repair hint.
     if vuepress_enabled
-        && !args.dry_run
+        && !dry_run
         && let Err(err) = vuepress::sync_tasks_links(&root_dir)
     {
         eprintln!("Warning: failed to sync vuepress docs symlinks: {err}");
@@ -547,8 +556,40 @@ mod tests {
             project_dir,
             allow_default,
             dry_run: false,
+            force: false,
             json: true,
         }
+    }
+
+    /// Builds update args with `--force` enabled for overwrite-path tests.
+    ///
+    /// 构造启用 `--force` 的 update 参数，供覆盖路径测试复用。
+    fn build_force_args(project_dir: PathBuf, username: Option<&str>) -> UpdateArgs {
+        UpdateArgs {
+            username: username.map(|s| s.to_string()),
+            project_dir,
+            allow_default: true,
+            dry_run: false,
+            force: true,
+            json: true,
+        }
+    }
+
+    /// Verifies `hotpot update --force` refreshes differing Hotpot-owned templates.
+    ///
+    /// 验证 `hotpot update --force` 会刷新内容不同的 Hotpot 私有模板文件。
+    #[test]
+    fn update_force_refreshes_differing_owned_template() {
+        let dir = temp_project_dir("force-owned-template");
+        install_claude_fixture(&dir.path().to_path_buf());
+        let template = dir.path().join(".claude/agents/hotpot-execution.md");
+        let bundled = include_str!("../../assets/platforms/claude/agents/hotpot-execution.md");
+        fs::write(&template, "local stale template").unwrap();
+
+        let args = build_force_args(dir.path().to_path_buf(), Some("alice"));
+        build_report(args).expect("update --force should refresh differing owned template");
+
+        assert_eq!(fs::read_to_string(&template).unwrap(), bundled);
     }
 
     #[test]

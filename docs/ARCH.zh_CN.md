@@ -52,7 +52,7 @@ slash 命令是 AI 工作流；CLI 子命令是状态和资源管理。
 | 命令 | 作用 |
 |---|---|
 | `hotpot init` | 安装指定平台的资产与共享 prompt。幂等。`--platform {claude\|opencode\|codex\|pi\|all}`。`--enable-vuepress`（或交互式 yes）会额外跑 `hotpot vuepress install`。 |
-| `hotpot update` | 协作者 day-1 入口。自动探测已安装平台，刷新资产、bootstrap 当前用户 workspace、合并 hotpot 段到 `.gitignore`、跑健康自检。 |
+| `hotpot update` | 协作者 day-1 入口。自动探测已安装平台，刷新资产、bootstrap 当前用户 workspace、合并 hotpot 段到 `.gitignore`、跑健康自检。`--force` 会覆盖内容不同的 Hotpot 私有 owned 模板，同时保留 merge / config / 用户自有资产的既有策略。 |
 | `hotpot vuepress {install,uninstall,start,stop,status}` | 管理 opt-in VuePress 集成。`install` 部署 `.hotpot-hub/` + `pnpm install` + opt-in prompts + 翻 `[vuepress] enabled = true`；`uninstall` 反向回滚；`start`/`stop`/`status` 通过 `.hotpot-hub/vuepress.runtime.json` 管理 `pnpm docs:dev` 进程。详见 **VuePress 集成**。 |
 | `/hotpot:new` | 头脑风暴 → 用户批准设计 → `hotpot task create [--switch\|--inactive]` → 写入 handoff 任务文件。启用 VuePress 时收尾流程额外询问用户是否在浏览器查看并跑 `hotpot vuepress start`。new 阶段不改业务代码。 |
 | `/hotpot:execute` | 入口跑 `hotpot vuepress stop --if-running` 释放 `/hotpot:new` 可能启动的 dev server → 取活动任务 → 调起执行子代理 → 收集 diff 与相关记忆 → 调起只读 review 子代理 → 修复循环（≤ 2 轮）→ 缓冲 issue 候选 → 让用户挑选保留范围 → 通过 `hotpot issues candidate add` 落盘。 |
@@ -130,7 +130,7 @@ VuePress 的公共 env-var 契约：`HOTPOT_VUEPRESS_ENABLED` 始终输出（`"t
 - **记忆流水线刻意分两段**：候选是轻量的项目级共享临时记录；晋升后的 issue 是重要的共享长期记忆。**禁止绕过候选阶段**。
 - **review 永远只读**：Pi 的同会话回退也不例外。
 - **状态变更走 CLI 子命令**，不要在 slash command prompt 里直接改文件。
-- **幂等**：`hotpot init` / `hotpot update` 重复执行必须安全。
+- **幂等**：`hotpot init` / `hotpot update` 重复执行必须安全。`hotpot update --force` 是显式替换内容不同的 Hotpot 私有 owned 模板的逃生口；它不能把 `Merge*` 资产或 `CreateIfMissing` seed 变成整文件覆盖。
 - **跨平台优先**：任何新行为都要按四个平台一并设计（或显式声明只覆盖子集并说明原因）。只在一个平台落地视为兼容性回退。
 
 ## 给后续 agent 的注意事项

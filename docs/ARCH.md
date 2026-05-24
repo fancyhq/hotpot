@@ -52,7 +52,7 @@ User-facing commands. Slash commands are AI workflows; CLI subcommands are state
 | Command | Purpose |
 |---|---|
 | `hotpot init` | Install platform-specific assets and shared prompts. Idempotent. Use `--platform {claude\|opencode\|codex\|pi\|all}`. `--enable-vuepress` (or interactive yes) additionally runs `hotpot vuepress install`. |
-| `hotpot update` | Day-1 entry for collaborators. Detects installed platforms, refreshes assets, bootstraps the current user's workspace, merges the hotpot block into `.gitignore`, runs a health self-check. |
+| `hotpot update` | Day-1 entry for collaborators. Detects installed platforms, refreshes assets, bootstraps the current user's workspace, merges the hotpot block into `.gitignore`, runs a health self-check. `--force` overwrites differing Hotpot-private owned templates while preserving merge/config/user-owned asset strategies. |
 | `hotpot vuepress {install,uninstall,start,stop,status}` | Manage the opt-in VuePress integration. `install` deploys `.hotpot-hub/` + `pnpm install` + opt-in prompts + flips `[vuepress] enabled = true`. `uninstall` reverses everything. `start` / `stop` / `status` manage the `pnpm docs:dev` process via `.hotpot-hub/vuepress.runtime.json`. See **VuePress Integration** below. |
 | `/hotpot:new` | Brainstorm → approve design → `hotpot task create [--switch\|--inactive]` → write the handoff task file. When VuePress is enabled, the closing flow additionally prompts the user to open the task in a browser and runs `hotpot vuepress start`. No code modifications during `new`. |
 | `/hotpot:execute` | Pre-flight `hotpot vuepress stop --if-running` (releases any dev server started by `/hotpot:new`) → resolve active task → run execution subagent → collect diff and relevant memory → run read-only review subagent → fix loop (≤ 2 rounds) → buffer issue candidates → ask user which to keep → write approved candidates via `hotpot issues candidate add`. |
@@ -130,7 +130,7 @@ Public env-var contract for VuePress: `HOTPOT_VUEPRESS_ENABLED` is always serial
 - **Memory pipeline is two-stage on purpose.** Candidates are cheap and project-shared temporary records; promoted issues are expensive and shared long-term memory. Never bypass the candidate stage.
 - **Review is always read-only.** Even in Pi's same-session fallback.
 - **State changes go through CLI subcommands**, not through ad-hoc file edits.
-- **Idempotency.** `hotpot init` / `hotpot update` must be safe to re-run.
+- **Idempotency.** `hotpot init` / `hotpot update` must be safe to re-run. `hotpot update --force` is the explicit escape hatch for replacing differing Hotpot-private owned templates; it must not turn `Merge*` assets or `CreateIfMissing` seeds into whole-file overwrites.
 - **Cross-platform first.** Any new behavior must be designed for all four platforms (or explicitly scoped with a documented reason). Single-platform additions are compatibility regressions.
 
 ## Notes For Future Agents

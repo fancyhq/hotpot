@@ -40,7 +40,6 @@ The active task `.md` MUST already exist on disk before this command runs. If `R
 
 - The user-facing invocation pattern is supplied by the platform thin shell.
 - In normal usage, run `hotpot ...` commands.
-- When testing or running inside this repository without an installed `hotpot` binary, use `cargo run -- ...` instead of `hotpot ...`.
 
 ## Required Flow
 
@@ -66,10 +65,10 @@ Before touching git or the issue-candidate pipeline, learn whether the active ta
 hotpot worktree path
 ```
 
-If testing in this repository:
+Run:
 
 ```bash
-cargo run -- worktree path
+hotpot worktree path
 ```
 
 - Non-empty stdout → record the value as `<worktree-path>` and the working branch as `hotpot/<task-id>`. Every git invocation in the rest of this command MUST be prefixed with `cd <worktree-path> && …` (concrete examples appear in the sections below).
@@ -83,10 +82,10 @@ Run:
 hotpot task active --path
 ```
 
-If testing in this repository, run:
+Run:
 
 ```bash
-cargo run -- task active --path
+hotpot task active --path
 ```
 
 If the command fails or returns no path, stop and tell the user there is no active task to finish.
@@ -101,10 +100,10 @@ Run:
 hotpot task list
 ```
 
-If testing in this repository, run:
+Run:
 
 ```bash
-cargo run -- task list
+hotpot task list
 ```
 
 The output is tab-separated: `<task_id>\t<status>\t<title>\t<date>`. Filter mentally for `In Progress` rows. Cross-check with:
@@ -139,10 +138,10 @@ Read the temporary issue candidates:
 hotpot issues candidate list
 ```
 
-If testing in this repository, run:
+Run:
 
 ```bash
-cargo run -- issues candidate list
+hotpot issues candidate list
 ```
 
 The output is JSONL (one `IssueCandidate` per line). If the output is empty, skip directly to the git-commit step and tell the user there are no review-memory candidates to promote.
@@ -172,10 +171,10 @@ After approval:
    printf '<line1>\n<line2>\n' | hotpot issues promote
    ```
 
-   If testing in this repository:
+   Run:
 
    ```bash
-   printf '<line1>\n<line2>\n' | cargo run -- issues promote
+   printf '<line1>\n<line2>\n' | hotpot issues promote
    ```
 
    The command prints `{"promoted":N}` on success. If it errors, stop and report the failure — do NOT proceed to clear, since the candidates are still the only record.
@@ -186,10 +185,10 @@ After approval:
    hotpot issues candidate clear
    ```
 
-   If testing in this repository:
+   Run:
 
    ```bash
-   cargo run -- issues candidate clear
+   hotpot issues candidate clear
    ```
 
    The command prints `{"cleared":N}`. If candidates failed to clear after a successful promote, still continue with the rest of finish-work — the task lifecycle is independent — but call this out clearly in the final report so the user can clean up manually.
@@ -317,8 +316,6 @@ git merge --no-ff hotpot/<task-id>
 hotpot worktree remove
 ```
 
-If testing in this repository, replace `hotpot` with `cargo run --`.
-
 If `git merge` reports conflicts, stop and let the user resolve them; do not run `hotpot worktree remove` until the merge is committed.
 
 ### Option 2 — Keep Branch, Remove Worktree
@@ -353,8 +350,6 @@ hotpot task done --commit <SHA>                  # single active, with commit
 hotpot task done --task-id <ID>                  # ambiguous active, no commit
 hotpot task done --task-id <ID> --commit <SHA>   # ambiguous active, with commit
 ```
-
-If testing in this repository, replace `hotpot` with `cargo run --`.
 
 The command prints the updated `TaskInfo` row as JSON. Verify the JSON shows `"status":"Done"` and `"active":false`; if `--commit` was supplied, verify the commit hash matches what `git rev-parse HEAD` reported.
 
@@ -398,7 +393,7 @@ If this commit fails, do not roll back `hotpot task done` or the task commit. Pr
 
 After `hotpot task done` (or `hotpot task cancel`) succeeds and before the final response, check whether the workspace has any tasks that are still open, and offer to continue with one of them inside this session.
 
-1. List remaining tasks via `hotpot task list` (in this repo use `cargo run -- task list`). Output shape is one row per task: `<task_id>\t<status>\t<title>\t<date>`.
+1. List remaining tasks via `hotpot task list`. Output shape is one row per task: `<task_id>\t<status>\t<title>\t<date>`.
 2. Filter rows where the status column equals `In Progress`. The row you just finished now has status `Done` or `Cancelled`, so the filter will exclude it naturally; verify by id to be safe.
 3. If the filtered list is empty, skip this entire step and go straight to the final response.
 4. Otherwise, present the list to the user as a short numbered choice. For each candidate show its `task_id`, `title`, and `date`. End with an explicit "or type `n` to skip" option.
@@ -410,10 +405,10 @@ After `hotpot task done` (or `hotpot task cancel`) succeeds and before the final
    hotpot task resume --task-id <ID>
    ```
 
-   If testing in this repository, run:
+   Run:
 
    ```bash
-   cargo run -- task resume --task-id <ID>
+   hotpot task resume --task-id <ID>
    ```
 
    The command prints the updated `TaskInfo` row as JSON. Verify the JSON shows `"active":true` and `"status":"In Progress"`. If the command errors (e.g. `Done`/`Cancelled` rejection, missing id), surface the error verbatim to the user and stop without invoking the execution agent.

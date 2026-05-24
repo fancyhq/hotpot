@@ -80,7 +80,6 @@ The active task `.md` MUST already exist on disk before this command runs. If `R
 
 - The user-facing invocation pattern is supplied by the platform thin shell.
 - In normal usage, run `hotpot ...` commands.
-- When testing or running inside this repository without an installed `hotpot` binary, use `cargo run -- ...` instead of `hotpot ...`.
 - Do not create a new task from this command. If there is no active task, stop and tell the user to create or activate one first.
 
 ## Agent Definitions
@@ -120,10 +119,10 @@ First check whether the active task already has a worktree attached (e.g. a prev
 hotpot worktree path
 ```
 
-If testing in this repository, run:
+Run:
 
 ```bash
-cargo run -- worktree path
+hotpot worktree path
 ```
 
 - Non-empty stdout → a worktree is already attached. Announce the path to the user (`Worktree already attached: <path>`) and skip the question. Reuse this path for the rest of the run.
@@ -146,10 +145,10 @@ If the user says yes, run:
 hotpot worktree create
 ```
 
-If testing in this repository, run:
+Run:
 
 ```bash
-cargo run -- worktree create
+hotpot worktree create
 ```
 
 Expect stdout to be a single JSON line containing at least `{"path": "...", "branch": "hotpot/<task-id>", "base_branch": "..."}`. Capture the `path` value — call it `<worktree-path>` below. Surface the JSON to the user so they can see the new worktree.
@@ -175,10 +174,10 @@ Run:
 hotpot task active --path
 ```
 
-If testing in this repository, run:
+Run:
 
 ```bash
-cargo run -- task active --path
+hotpot task active --path
 ```
 
 Use the returned path as the task file path. Do not guess the task file path.
@@ -403,10 +402,10 @@ hotpot issues relevant \
   --limit 5
 ```
 
-If testing in this repository, run:
+Run:
 
 ```bash
-cargo run -- issues relevant \
+hotpot issues relevant \
   --changed-file <path> \
   --keyword <keyword> \
   --limit 5
@@ -693,10 +692,10 @@ If the user approves some, pipe the approved JSONL into:
 hotpot issues candidate add
 ```
 
-If testing in this repository, run:
+Run:
 
 ```bash
-cargo run -- issues candidate add
+hotpot issues candidate add
 ```
 
 Expect stdout `{"added":N}` where N is the number of candidates written. If the count is unexpected, surface the discrepancy in the final response.

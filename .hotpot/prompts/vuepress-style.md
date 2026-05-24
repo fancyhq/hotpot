@@ -225,7 +225,7 @@ long explanations may stay as `- [ ]` checkboxes.
 | Command | Expected |
 | ------- | -------- |
 | `cargo build` | passes, no new warnings |
-| `cargo run -- vuepress start --port 8080` | single-line JSON, returns immediately |
+| `hotpot vuepress start --port 8080` | single-line JSON, returns immediately |
 ````
 
 ### SHOULD C — Prefer markdown ordered/unordered lists over inline `(1)(2)(3)`

@@ -1,4 +1,4 @@
-{"time":"2026-05-17","task_id":"ki_gC-tvlf","title":"auto-cleanup-test-tempdirs","commit":null,"status":"In Progress","active":false}
+{"time":"2026-05-17","task_id":"ki_gC-tvlf","title":"auto-cleanup-test-tempdirs","commit":null,"status":"Cancelled","active":false}
 {"time":"2026-05-17","task_id":"OJAZCCCMWM","title":"fix-vuepress-start-detach","commit":null,"status":"Done","active":false}
 {"time":"2026-05-17","task_id":"e-djji7xwQ","title":"polish-vuepress-task-rendering","commit":"33fc63151867ff796238afbc062426b370f7b380","status":"Done","active":false}
 {"time":"2026-05-18","task_id":"iFGpre-4zn","title":"diagnose-vuepress-start-bash-hang","commit":"2a2938ef0d7c79a422836453917d1f24f006b5a9","status":"Done","active":false}
@@ -10,7 +10,7 @@
 {"time":"2026-05-21","task_id":"Sohnu9bT0J","title":"fix-pi-new-arguments","commit":"51bc25bf8077dc3f13aa57701ed6b9ec13fc35e9","status":"Done","active":false}
 {"time":"2026-05-21","task_id":"ZtBXQFcWVl","title":"sync-pi-installed-new-prompt","commit":"cb7fad6a5964a1fa1b33b5d8d8f1e5990586a507","status":"Done","active":false}
 {"time":"2026-05-21","task_id":"7HRDhltz2S","title":"strengthen-pi-new-arguments-prompt","commit":"628f5867d85c1167939bf840b064d2082457465d","status":"Done","active":false}
-{"time":"2026-05-21","task_id":"TtVGuuw9Yr","title":"migrate-pi-commands-to-extension","commit":null,"status":"In Progress","active":false}
+{"time":"2026-05-21","task_id":"TtVGuuw9Yr","title":"migrate-pi-commands-to-extension","commit":null,"status":"Cancelled","active":false}
 {"time":"2026-05-21","task_id":"1OxeIwhj7g","title":"pi-fix-weak-model-task-handoff","commit":"af1487a","status":"Done","active":false}
 {"time":"2026-05-22","task_id":"2Prmow0FQ1","title":"guard-pi-hotpot-first-tool-call","commit":"f8fe8e1ebf6e68e2b350f13a7644873e9a1b793a","status":"Done","active":false}
 {"time":"2026-05-23","task_id":"okzInSJt72","title":"cleanup-test-artifacts-and-cache","commit":"e5d92b7f2264d5ec8f970311f7b2d9de155cb8df","status":"Done","active":false}

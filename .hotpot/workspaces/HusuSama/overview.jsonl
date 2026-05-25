@@ -18,4 +18,4 @@
 {"time":"2026-05-25","task_id":"6zC_P_-393","title":"move-execute-questions-to-new","commit":"332af39cab2e9c15a76b6641f43b68ed31872cd6","status":"Done","active":false}
 {"time":"2026-05-25","task_id":"Sc2R3wzaQj","title":"sync-task-overview-status","commit":"519a3d6577c8616d9b4a33ec03fac484a466adfb","status":"Done","active":false}
 {"time":"2026-05-25","task_id":"CcSpXByWLV","title":"add-release-please-workflow","commit":"d191053134699202f048e6b76192a97b1df6555a","status":"Done","active":false}
-{"time":"2026-05-25","task_id":"3S1tSi_8Iq","title":"add-release-binary-assets","commit":null,"status":"In Progress","active":true}
+{"time":"2026-05-25","task_id":"3S1tSi_8Iq","title":"add-release-binary-assets","commit":"5f8ad31ba25079eb4ab6f97badc313216db252ac","status":"Done","active":false}

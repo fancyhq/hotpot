@@ -59,8 +59,11 @@ hotpot init --platform opencode
 1. 日常开发：向 `main` 分支提交遵循 Conventional Commits 规范的 PR（如 `feat:`、`fix:` 前缀）。
 2. 自动聚合：每次 push 到 `main` 后，GitHub Actions 会自动创建或更新一个 **Release PR**，汇总所有新的 conventional commits。
 3. 人工发布：当需要正式发布时，维护者手动合并 Release PR。合并后 `release-please` 会自动创建 Git tag 和 GitHub Release，并更新 `CHANGELOG.md` 和版本文件。
+4. 自动构建：Release 创建后，GitHub Actions 自动为 Windows、macOS（x86_64 + aarch64）和 Linux（x86_64 + aarch64）编译 release 二进制，将压缩包和 SHA256 校验文件上传到对应的 GitHub Release。
 
 > 普通功能分支合并到 `main` 不会立即创建 tag 或 GitHub Release，确保你可以累积多个功能后再统一发布。
+>
+> 二进制 release assets 仅在合并 Release PR 后自动构建上传，crates.io / Homebrew / Scoop / Chocolatey 等包管理器发布需要单独评估，不在当前发布流程覆盖范围内。
 
 ## 执行流程
 

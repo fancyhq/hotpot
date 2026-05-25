@@ -38,6 +38,7 @@
 - [ ] **feat**: 移除所有的单元测试内容，尝试通过集成测试进行完整基础功能测试
 - [ ] **feat**: 完善更新功能
 - [ ] **feat**: 增加卸载项目文件配置功能
-- [ ] **feat**: 增加 `npm` 、`bun` 、`cargo` 、`brew` 、`choco` `scoop` 等安装机制
+- [x] **feat**: 增加 GitHub Release 跨平台二进制自动构建与上传（Windows、macOS x86_64/aarch64、Linux x86_64/aarch64 + SHA256 校验）
+- [ ] **feat**: 增加 `npm` 、`bun` 、`cargo` 、`brew` 、`choco` `scoop` 等安装机制（crates.io / Homebrew / Scoop / Chocolatey 需后续单独评估）
 - [x] **feat**: 增加 `github action` 机制，使用 `release-please` 完善发布流程，注意不能每次合并都创建新版本发布
 - [ ] **feat**: 安装的提示都使用英文

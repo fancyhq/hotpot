@@ -85,7 +85,12 @@ finish-work → 汇总候选 → 用户批准晋升
 
 - `hotpot task create [--switch|--inactive] --title <t>` —— 强制单 active 不变式；冲突时以 `ACTIVE_CONFLICT:` 前缀 bail（按机器可读 token 处理，**不要翻译**）。
 - `hotpot task list --json`、`hotpot task active [--path|--count]`
-- `hotpot task done [--task-id <id>] [--commit <sha>]`、`hotpot task cancel`、`hotpot task resume`
+- `hotpot task done [--task-id <id>] [--commit <sha>]` —— ledger 更新后，
+  CLI 还会同步任务 Markdown 文件的 VuePress Overview `Status` 单元格为 `Done`
+  （仅 VuePress 启用项目）。I/O 错误输出 `eprintln!` warning 但不导致命令失败。
+  跳过类结果（VuePress 未启用、文件缺失、无 Overview 表）静默忽略。
+  同步实现在 `src/task/markdown.rs::sync_task_file_status`。
+- `hotpot task cancel`、`hotpot task resume`
 - `hotpot issues relevant --changed-file <p> --keyword <k> --limit 5`
 - `hotpot issues promote`（stdin JSONL → `{"promoted":N}`）
 - `hotpot issues candidate {list,add,clear}`（`add` 从 stdin 读 JSONL → `{"added":N}`）

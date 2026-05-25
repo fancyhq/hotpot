@@ -28,6 +28,7 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
 mod create;
+mod markdown;
 mod storage;
 mod transitions;
 
@@ -39,11 +40,20 @@ pub use create::create_task;
 // monolithic `task.rs` already exposed it as a `pub fn`. Keep the re-export
 // to stabilize the public surface and silence the unused-import lint that
 // `pub use` triggers without an in-crate caller.
+pub use markdown::sync_task_file_status;
 #[allow(unused_imports)]
 pub use storage::{
     get_active_task, get_active_task_count, get_active_task_filepath, get_task_by_id,
     get_task_filename, get_task_list,
 };
+// `OverviewSyncOutcome` and `update_overview_status` are re-exported as part
+// of the module's public API even though no current in-crate consumer names
+// them explicitly — `sync_task_file_status` returns `OverviewSyncOutcome`, and
+// the string-level helper is available for direct use in integration tests.
+// 保留公共 API 的完整可见性：`sync_task_file_status` 返回 `OverviewSyncOutcome`，
+// `update_overview_status` 供集成测试直接调用。
+#[allow(unused_imports)]
+pub use markdown::{OverviewSyncOutcome, update_overview_status};
 pub use transitions::{
     attach_worktree, detach_worktree, mark_task_cancelled, mark_task_done, mark_task_resumed,
     stop_all_active_tasks,
@@ -588,8 +598,7 @@ mod tests {
     /// 全局，cargo 默认并发会让它们互相干扰。每个 env-敏感测试在最开始锁
     /// 一次，结束自动释放。
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        LOCK.lock().unwrap_or_else(|e| e.into_inner())
+        crate::test_support::acquire_env_lock()
     }
 
     /// 多线程并发 `create_task` 不丢更新：N 个线程各创建一条任务，最终

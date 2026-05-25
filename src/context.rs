@@ -789,19 +789,23 @@ mod tests {
     //! from racing across cargo's parallel runner. Each test materializes
     //! its own `.hotpot/config.toml` in `env::temp_dir()` so it cannot
     //! collide with the real project state.
-    use std::{
-        fs,
-        path::Path,
-        sync::{Mutex, MutexGuard},
-    };
+    use std::{fs, path::Path, sync::MutexGuard};
 
     use super::*;
     use tempfile::{Builder, TempDir};
 
-    /// 串行化所有触碰 `HOTPOT_LANGUAGE` 的测试。
+    /// Serializes all environment-mutating tests through the crate-wide lock.
+    ///
+    /// The lock is shared with `ScopedEnvVar` users in other modules, so tests
+    /// mutating `HOTPOT_LANGUAGE`, `HOTPOT_USERNAME`, or VuePress env vars cannot
+    /// race each other under cargo's parallel test runner.
+    ///
+    /// 通过 crate 级共享锁序列化所有环境变量变异测试。
+    ///
+    /// 该锁与其他模块中的 `ScopedEnvVar` 使用者共享，避免 cargo 并行测试时
+    /// `HOTPOT_LANGUAGE`、`HOTPOT_USERNAME` 或 VuePress env 变量互相污染。
     fn env_lock() -> MutexGuard<'static, ()> {
-        static LOCK: Mutex<()> = Mutex::new(());
-        LOCK.lock().unwrap_or_else(|e| e.into_inner())
+        crate::test_support::acquire_env_lock()
     }
 
     /// 创建唯一临时项目根目录。

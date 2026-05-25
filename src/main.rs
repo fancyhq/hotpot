@@ -6,6 +6,8 @@ mod lock;
 mod paths;
 mod server;
 mod task;
+#[cfg(test)]
+mod test_support;
 mod vuepress;
 mod workspace;
 mod worktree;

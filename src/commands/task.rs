@@ -378,9 +378,19 @@ pub fn stop_task(args: StopArgs) -> Result<()> {
 /// as a single JSON object on stdout so the slash command can inspect the
 /// final state without re-reading the file.
 ///
+/// After the ledger is updated, the function attempts to sync the task file's
+/// VuePress Overview `Status` cell to `Done`. This is a best-effort UI update:
+/// I/O errors are written to stderr as English warnings but do NOT cause the
+/// command to fail. Skipped outcomes (VuePress disabled, missing file, no
+/// Overview table) are silently ignored.
+///
 /// 把任务标记为 `Done`，可选回填 commit hash。由 `/hotpot:finish-work`
 /// 在用户确认完成、可选创建好 git commit 后调用。stdout 输出更新后这
 /// 一行 JSON，方便 slash command 直接核对落盘结果。
+///
+/// ledger 更新后额外同步任务文件的 VuePress Overview 状态列。该同步是
+/// 尽力而为的 UI 更新：I/O 错误走 stderr 输出英文 warning，但不导致命令
+/// 失败。跳过类结果（VuePress 未启用、文件缺失、无 Overview 表）静默忽略。
 pub fn done_task(args: DoneArgs) -> Result<()> {
     let root_dir = context::resolve_root_dir(None)?;
     let username = context::resolve_username(&root_dir)?;
@@ -391,6 +401,15 @@ pub fn done_task(args: DoneArgs) -> Result<()> {
         args.task_id.as_deref(),
         args.commit.as_deref(),
     )?;
+
+    // Best-effort VuePress Overview status sync: warn on I/O error, skip
+    // silently for non-Updated outcomes. stdout MUST remain the single JSON
+    // line — warnings go to stderr only.
+    // 尽力同步 VuePress Overview 状态：I/O 错误时 warn，非 Updated 静默跳过。
+    // stdout 必须保持单行 JSON 语义，warning 只能走 stderr。
+    if let Err(err) = task::sync_task_file_status(&root_dir, &username, &updated) {
+        eprintln!("Warning: failed to sync task Markdown status: {err}");
+    }
 
     let line = serde_json::to_string(&updated).context("序列化更新后的任务失败")?;
     println!("{line}");
@@ -417,6 +436,113 @@ pub fn cancel_task(args: CancelArgs) -> Result<()> {
     let line = serde_json::to_string(&updated).context("序列化更新后的任务失败")?;
     println!("{line}");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::Builder;
+
+    /// Validates that `done_task` wires the VuePress Overview status sync
+    /// after the ledger is updated: after marking a task Done, the
+    /// task's Markdown file should have its Overview `Status` cell set
+    /// to `Done`.
+    ///
+    /// 验证 `done_task` 正确接入 VuePress Overview 状态同步：将任务标记为
+    /// Done 后，任务 Markdown 文件的 Overview `Status` 单元格应为 `Done`。
+    #[test]
+    fn done_task_sync_helper_updates_task_file_after_ledger_done() {
+        let root = Builder::new()
+            .prefix("hotpot-done-sync-")
+            .tempdir()
+            .unwrap();
+        let root_dir = root.path().display().to_string();
+        let username = "done_sync_test_user";
+
+        // Use the crate-wide ScopedEnvVar guard: saves current values,
+        // applies overrides, and restores everything in Drop (even on panic).
+        // HOTPOT_VUEPRESS_ENABLED is UNSET so it falls through to the
+        // .hotpot/config.toml detection — this avoids polluting the
+        // process env for concurrent tests running in other modules.
+        // 使用 crate 级 ScopedEnvVar 守卫：保存当前值、施加新值、析构时
+        // 自动恢复（含 panic 路径）。不设 HOTPOT_VUEPRESS_ENABLED env var，
+        // 让 resolve_vuepress_enabled 走 config.toml 路径。
+        let _env = crate::test_support::ScopedEnvVar::new(&[
+            ("ROOT_DIR", Some(&root_dir)),
+            ("HOTPOT_USERNAME", Some(username)),
+            ("HOTPOT_VUEPRESS_ENABLED", None),
+        ]);
+
+        // Create .hotpot/config.toml (VuePress enabled via config file).
+        let config_dir = root.path().join(".hotpot");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::write(
+            config_dir.join("config.toml"),
+            "[vuepress]\nenabled = true\nport = 8080\n",
+        )
+        .unwrap();
+
+        // Create tasks directory.
+        let tasks_dir = root
+            .path()
+            .join(".hotpot/workspaces")
+            .join(username)
+            .join("tasks");
+        fs::create_dir_all(&tasks_dir).unwrap();
+
+        // Create a task in the ledger.
+        let task_row = task::create_task(
+            &root_dir,
+            username,
+            "done-sync-test-task",
+            None,
+            task::CreateMode::Default,
+            false,
+        )
+        .expect("create_task should succeed");
+
+        // Create the task .md file with an Overview table ("In Progress").
+        let task_filename = task::get_task_filename(&task_row);
+        let task_file = tasks_dir.join(format!("{task_filename}.md"));
+        let md_content = format!(
+            r#"# {title}
+
+::: info Overview
+| Status | TDD | Tasks | Risk |
+| ------ | --- | ----- | ---- |
+| In Progress | true | 4 | medium |
+:::
+
+## Task
+"#,
+            title = task_row.title
+        );
+        fs::write(&task_file, &md_content).unwrap();
+
+        // Call done_task — this must sync the Overview Status to "Done".
+        let args = DoneArgs {
+            task_id: Some(task_row.task_id.clone()),
+            commit: None,
+        };
+        done_task(args).expect("done_task should succeed");
+
+        // Verify: task file's Overview Status cell should be "Done".
+        let updated_content = fs::read_to_string(&task_file).unwrap();
+        assert!(
+            updated_content.contains("| Done | true | 4 | medium |"),
+            "Task file Overview Status should be 'Done' after done_task.\nFile content:\n{updated_content}"
+        );
+        assert!(
+            !updated_content.contains("| In Progress |"),
+            "Old status 'In Progress' should no longer appear.\nFile content:\n{updated_content}"
+        );
+
+        // _env drops here, restoring ROOT_DIR, HOTPOT_USERNAME, and
+        // HOTPOT_VUEPRESS_ENABLED to their original values — even on panic.
+        // _env 在此析构，自动恢复 ROOT_DIR、HOTPOT_USERNAME、
+        // HOTPOT_VUEPRESS_ENABLED 到原始值（含 panic 路径）。
+    }
 }
 
 /// Resumes a task by flipping its `active` flag to `true` and clearing the

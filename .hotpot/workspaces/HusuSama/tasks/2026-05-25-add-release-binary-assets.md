@@ -11,7 +11,7 @@ tag: [github-actions, release-please, release, binary-assets]
 ::: info Overview
 | Status | TDD | Tasks | Risk |
 | ------ | --- | ----- | ---- |
-| In Progress | false | 4 | medium |
+| Done | false | 4 | medium |
 :::
 
 ---

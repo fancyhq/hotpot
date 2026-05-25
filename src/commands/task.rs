@@ -1,7 +1,10 @@
 use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
 
-use crate::{context, task};
+use crate::{
+    context,
+    task::{self, TaskInfo},
+};
 
 /// Subcommands of `hotpot task`.
 ///
@@ -54,6 +57,8 @@ pub enum TaskCommand {
 /// 陈旧 active（`status="Done"` / `"Cancelled"`），不必再解析 TSV。
 #[derive(Debug, Args)]
 pub struct ListArgs {
+    #[arg(long)]
+    status: Option<String>,
     /// Emit one JSON object per task line instead of the default TSV.
     ///
     /// 每行输出一个 TaskInfo JSON 对象，替代默认的 TSV 输出。
@@ -244,7 +249,7 @@ pub struct CreateArgs {
 pub fn list_tasks(args: ListArgs) -> Result<()> {
     let root_dir = context::resolve_root_dir(None)?;
     let username = context::resolve_username(&root_dir)?;
-    let tasks = task::get_task_list(&root_dir, &username)?;
+    let mut tasks = task::get_task_list(&root_dir, &username)?;
     if tasks.is_empty() {
         if !args.json {
             println!("No tasks found.");
@@ -253,6 +258,11 @@ pub fn list_tasks(args: ListArgs) -> Result<()> {
         // JSON mode: empty set emits no output to keep callers simple.
         return Ok(());
     }
+
+    if let Some(status) = &args.status {
+        tasks = filter_tasks_by_status(&tasks, status);
+    }
+
     if args.json {
         for task in tasks {
             let line = serde_json::to_string(&task)
@@ -271,6 +281,14 @@ pub fn list_tasks(args: ListArgs) -> Result<()> {
         }
     }
     Ok(())
+}
+
+pub fn filter_tasks_by_status(tasks: &[TaskInfo], status: &str) -> Vec<TaskInfo> {
+    tasks
+        .iter()
+        .filter(|task| task.status.as_str() == status)
+        .cloned()
+        .collect()
 }
 
 /// Creates a new task, mapping CLI flags to the [`task::CreateMode`]

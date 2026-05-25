@@ -1,5 +1,6 @@
 ---
 description: Implements Hotpot tasks from full task files and fixes review findings
+model: deepseek/deepseek-v4-flash
 mode: subagent
 permission:
   edit: allow

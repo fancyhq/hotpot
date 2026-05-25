@@ -43,29 +43,27 @@ Codex / Pi (no `@path` expansion): the thin shell's substitution table maps this
 
 Hotpot enforces "at most one `active=true && status=In Progress` task per user". Before brainstorming, classify the workspace and decide whether to ask the user about switching execution focus.
 
-1. **Read the workspace ledger as JSONL** (each line is a full `TaskInfo`):
+1. **List In-Progress tasks as JSONL** (each line is a full `TaskInfo`):
 
    ```bash
-   hotpot task list --json
+   hotpot task list --status "In Progress" --json
    ```
 
    Run:
 
    ```bash
-   hotpot task list --json
+   hotpot task list --status "In Progress" --json
    ```
 
-2. **Partition `active=true` rows** into two buckets:
-   - **Live actives** — `status="In Progress"`. Hotpot enforces ≤ 1; the orchestrator must prompt the user before clobbering.
-   - **Stale actives** — `status="Done"` or `"Cancelled"`. **Ignore them here**; `hotpot task create` silently clears stale active rows in every mode.
+2. **Inspect only `active=true` rows from this filtered output**. Because the CLI already filtered to `status="In Progress"`, every matching active row is a live active. Hotpot enforces ≤ 1; the orchestrator must prompt the user before clobbering. Do **not** separately inspect or classify `Done` / `Cancelled` rows here; `hotpot task create` silently clears stale active rows in every mode.
 
-3. **If there are no live actives**: skip the user prompt. Continue to brainstorming and use the plain create command later (Step 4 of Required Flow):
+3. **If there are no active rows in the filtered output**: skip the user prompt. Continue to brainstorming and use the plain create command later (Step 4 of Required Flow):
 
    ```bash
    hotpot task create --title "<TITLE>"
    ```
 
-4. **If there is ≥ 1 live active**: ask the user **exactly once** with clear options:
+4. **If there is ≥ 1 active row in the filtered output**: ask the user **exactly once** with clear options:
 
    > There is already an active In-Progress task: `<task_id> — <title>`.
    > Should the new task **switch** execution to itself (clears the existing active), or just be **recorded** without switching (new task starts inactive)?

@@ -10,6 +10,9 @@
 # - When a release is created, this workflow also builds and uploads
 #   release binaries for Windows, macOS (x86_64 + aarch64), and Linux
 #   (x86_64 + aarch64), along with SHA256 checksum files.
+# - Version selection is controlled by release-please. To force a specific
+#   next release version, merge a conventional commit that includes a
+#   `Release-As: x.y.z` footer.
 # 行为说明：
 # - 每次 push 到 main 分支时，release-please 创建或更新同一个 Release PR，
 #   汇聚自上次发布以来的所有 conventional commits。
@@ -18,6 +21,8 @@
 #   GitHub Release 并更新 changelog。
 # - 当 release 创建后，此 workflow 还会为 Windows、macOS（x86_64 + aarch64）
 #   和 Linux（x86_64 + aarch64）编译 release 二进制，上传压缩包和 SHA256 校验文件。
+# - 版本号由 release-please 控制。若要强制指定下一次发布版本，合入一条包含
+#   `Release-As: x.y.z` footer 的 conventional commit。
 #
 # See: https://github.com/googleapis/release-please-action
 # See: https://github.com/googleapis/release-please
@@ -72,7 +77,13 @@ jobs:
             suffix: .exe
             archive_ext: .zip
             asset_label: windows-x86_64
-          - os: macos-13
+          # Build the Intel macOS target from the current hosted macOS image
+          # instead of requesting `macos-13`. The `macos-13` Intel runner can
+          # sit in the queue for a long time before compilation even starts,
+          # while Rust can cross-compile this target from Apple Silicon macOS.
+          # 使用当前托管 macOS 镜像交叉编译 Intel macOS 目标，避免请求
+          # `macos-13` Intel runner 时长时间排队。
+          - os: macos-latest
             target: x86_64-apple-darwin
             suffix: ""
             archive_ext: .tar.gz

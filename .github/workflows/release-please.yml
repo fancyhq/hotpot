@@ -129,7 +129,31 @@ jobs:
           # 对其他目标无影响（环境变量会被忽略）。
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
-      - name: Package binary and generate SHA256
+      - name: Package Windows binary and generate SHA256
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tag = "${{ needs.release-please.outputs.tag_name }}"
+          $assetLabel = "${{ matrix.asset_label }}"
+          $archive = "hotpot-$tag-$assetLabel${{ matrix.archive_ext }}"
+          $binary = "hotpot${{ matrix.suffix }}"
+
+          # Stage the binary at the root of the archive (no nested path).
+          # 将二进制文件放在压缩包根目录（无嵌套路径）。
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/$binary" "staging/$binary"
+
+          Compress-Archive -Path "staging/$binary" -DestinationPath $archive -Force
+
+          # Generate SHA256 checksum in the standard format: <hash>  <filename>
+          # 以标准格式生成 SHA256 校验文件。
+          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLower()
+          "$hash  $archive" | Out-File -Encoding ASCII "$archive.sha256"
+
+          "ARCHIVE=$archive" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Package Unix binary and generate SHA256
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           TAG="${{ needs.release-please.outputs.tag_name }}"
@@ -143,19 +167,11 @@ jobs:
           mkdir -p staging
           cp "target/${{ matrix.target }}/release/${BINARY}" staging/
 
-          if [ "${EXT}" = ".zip" ]; then
-            (cd staging && zip -r "../${ARCHIVE}" "${BINARY}")
-          else
-            (cd staging && tar czf "../${ARCHIVE}" "${BINARY}")
-          fi
+          (cd staging && tar czf "../${ARCHIVE}" "${BINARY}")
 
           # Generate SHA256 checksum in the standard format: <hash>  <filename>
           # 以标准格式生成 SHA256 校验文件。
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            powershell -Command "\$h=(Get-FileHash -Algorithm SHA256 '${ARCHIVE}').Hash.ToLower(); \"\$h  ${ARCHIVE}\" | Out-File -Encoding ASCII '${ARCHIVE}.sha256'"
-          else
-            shasum -a 256 "${ARCHIVE}" > "${ARCHIVE}.sha256"
-          fi
+          shasum -a 256 "${ARCHIVE}" > "${ARCHIVE}.sha256"
 
           echo "ARCHIVE=${ARCHIVE}" >> "${GITHUB_ENV}"
 

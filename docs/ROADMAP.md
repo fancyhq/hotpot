@@ -8,18 +8,17 @@
 - [ ] **feat**: `brainstorming` 时检测哪些任务可以并行，启动多个子代理执行任务
 - [ ] **feat**: 增加主代理执行和子代理执行的选择，主代理执行无需重新读取 `task` 文件
 - [ ] **feat**: 启动子代理执行，直接启动子代理执行，主代理无需再次阅读 `task` 文件
-- [x] **feat**: 在 `brainstorming` 等文件中，移除使用 `cargo run --` 的说明，全部使用 `hotpot` 正式二进制名称
 - [ ] **feat**: `hotpot:finish-work` 流程太长，看是否能合并一些问题和操作
 - [ ] **feat**: 代码优化与模块拆分
 - [ ] **feat**: `subagent` 可自定义模型
-- [ ] **feat**: `worktree` 的决策应该在写入任务文件之前决定，在执行 `hotpot:execute` 后，不应再询问任何问题，`overview.jsonl` 和 `task` 文件可以加入是否启用 `git-worktree` 供执行子进程判断
+- [ ] **feat**: 检查 `vuepress` 是否启用通过 `hotpot` 命令校验，不让 `AI` 自行搜索是否有文件夹之类的
 
 ## 问题修复
 
 ### vuepress OR markdown
 
 - [ ] **bug**: 如果用户上次未启动 `vuepress` ，在 `hotpot:execute` 时，无需启动 `vuepress stop`
-- [ ] **bug**: 在 `task` 文档中，有些状态，但是整体完成后，并没有修改这个 `In Progress` 的状态，要么移除这个状态显示，要么在整体完成后，再次更新这个状态，但是需要注意有 `vuepress` 和没有 `vuepress` 的文档内容同步
+- [x] **bug**: 在 `task` 文档中，有些状态，但是整体完成后，并没有修改这个 `In Progress` 的状态，要么移除这个状态显示，要么在整体完成后，再次更新这个状态，但是需要注意有 `vuepress` 和没有 `vuepress` 的文档内容同步
 - [ ] **bug**: `claude code` 在有 `vuepress` 开启的情况下，没有使用 `vuepress` 的格式编写文件，也没有打开 `vuepress` 服务
 - [ ] **bug**: 在使用 `brainstorming` 时，如果进行了其他对话操作，对于 `vuepress` 的规范会缺失，也不会启动并提醒 `vuepress` 查看
 - [ ] **bug**: 使用 `hotpot init --platform` 添加其他平台时，如果 `config.toml` 已配置 `vuepress` ，将不再提示是否启用，有 `hotpot-hub` 文件夹将不再重复添加

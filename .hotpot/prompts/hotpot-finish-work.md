@@ -65,22 +65,10 @@ Before touching git or the issue-candidate pipeline, learn whether the active ta
 hotpot worktree path
 ```
 
-Run:
-
-```bash
-hotpot worktree path
-```
-
 - Non-empty stdout → record the value as `<worktree-path>` and the working branch as `hotpot/<task-id>`. Every git invocation in the rest of this command MUST be prefixed with `cd <worktree-path> && …` (concrete examples appear in the sections below).
 - Empty stdout → no worktree attached. Behavior below is identical to the previous version of this prompt; skip the **Worktree Disposal** section entirely.
 
 ## Resolve the Active Task
-
-Run:
-
-```bash
-hotpot task active --path
-```
 
 Run:
 
@@ -93,12 +81,6 @@ If the command fails or returns no path, stop and tell the user there is no acti
 ## Multiple Active Tasks
 
 Normally Hotpot enforces a single `active=true` row, but `hotpot task create --inactive` legitimately leaves the previous In-Progress active intact (the new row starts `active=false`), so `overview.jsonl` can hold more than one `active=true` row when a user has explicitly recorded parallel tasks. (Stale `active=true && status=Done|Cancelled` rows are silently cleaned by every `task create` call and should not appear here.) Detect any remaining multi-active state before doing anything destructive.
-
-Run:
-
-```bash
-hotpot task list
-```
 
 Run:
 

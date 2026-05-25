@@ -1,4 +1,3 @@
-<!-- Hotpot Codex skill asset for creating a new task. -->
 ---
 name: hotpot-new
 description: Create a Hotpot task through brainstorming and planning.

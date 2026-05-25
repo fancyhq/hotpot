@@ -1,4 +1,3 @@
-<!-- Hotpot Codex skill asset for executing the active task. -->
 ---
 name: hotpot-execute
 description: Execute and review the active Hotpot task with review-fix loops.

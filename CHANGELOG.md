@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/fancyhq/hotpot/compare/hotpot-v0.3.0...hotpot-v0.3.1) (2026-05-25)
+
+
+### Features
+
+* 更新macos版本 ([1b50b5d](https://github.com/fancyhq/hotpot/commit/1b50b5d119a4c5ae54f6c4bc9e9516e2b8f95c9d))
+
 ## [0.3.0](https://github.com/fancyhq/hotpot/compare/hotpot-v0.2.0...hotpot-v0.3.0) (2026-05-25)
 
 

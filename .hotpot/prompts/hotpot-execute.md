@@ -17,7 +17,7 @@ Read the active Hotpot task file, inject its full contents into a Hotpot executi
 
 ## Output Language
 
-Apply the project language preference to every natural-language output produced by this command — phase announcements, execution / review reports, fix-loop status lines, candidate summaries surfaced to the user, and the final per-command report. Pass the same language directive into the prompts you embed for the execution and review agents so their output is consistent. Structural anchors and machine-readable tokens (CLI flags, JSON keys, `ACTIVE_CONFLICT:`, markdown section headings, `tdd: true|false`, kebab-case slugs) MUST stay in English. Full rule:
+Apply the project language preference to every natural-language output produced by this command — phase announcements, execution / review reports, fix-loop status lines, candidate summaries surfaced to the user, and the final per-command report. Pass the same language directive into the prompts you embed for the execution and review agents so their output is consistent. Structural anchors and machine-readable tokens (CLI flags, JSON keys, `ACTIVE_CONFLICT:`, markdown section headings, `tdd: true|false`, `git-worktree: true|false`, kebab-case slugs) MUST stay in English. Full rule:
 
 @.hotpot/prompts/output-language.md
 
@@ -31,7 +31,7 @@ Rationale: when VuePress is enabled, `/hotpot:new` may have spawned a `pnpm docs
 
 ## Pre-flight: Verify Subagent Registration
 
-Run this check **before** the Worktree Decision (Step 0). Its purpose is to catch the OpenCode-style `Unknown agent type: hotpot-execution` failure mode (and its Claude / Codex equivalents) at a single, recoverable point — not deep inside the execute / review loop where the symptom is opaque.
+Run this check **before** resolving the active task. Its purpose is to catch the OpenCode-style `Unknown agent type: hotpot-execution` failure mode (and its Claude / Codex equivalents) at a single, recoverable point — not deep inside the execute / review loop where the symptom is opaque.
 
 ### What To Check
 
@@ -70,7 +70,7 @@ fi
 
 - All required files are present on disk but a later subagent invocation still fails with `Unknown agent type: hotpot-execution` (or `hotpot-review`) → treat this as a platform subagent-registry cache miss. Apply the **same** recovery path: ask the user to run `hotpot update --platform <platform>` and to **restart the agent session** (the session must be torn down so the registry is rebuilt), then STOP. Do not retry the same subagent in the current session — the cache will keep returning the same `Unknown agent type` error.
 
-This pre-flight runs **before** the Worktree Decision (Step 0) so a doomed run does not create a worktree that will immediately be orphaned.
+This pre-flight runs **before** reading the task execution strategy so a doomed run does not create a worktree that will immediately be orphaned.
 
 ## Precondition: Task File Must Exist
 
@@ -92,28 +92,43 @@ The review phase must stay read-only even in fallback mode.
 
 ## Required Flow
 
-0. **Worktree decision (opt-in)**: probe whether a worktree is already attached to the task; if not, ask the user whether to create one and (on yes) run `hotpot worktree create`. Remember the resulting worktree path — every subsequent step in this run inherits it.
-1. Resolve the active task file path.
-2. Read the full task file contents.
-3. Verify the task file has enough execution structure.
-4. Detect TDD mode from `## Plan > ### Mode`.
-5. Launch or invoke the Hotpot execution agent with the full task file embedded inline, plus the worktree directive if one is attached.
-6. Collect changed files and diff after execution when git is available, scoped to the worktree if attached.
-7. Fetch relevant Hotpot issue memory for review.
-8. Launch or invoke the Hotpot review agent with task context, execution report, diff or fallback context, issue memory, and the worktree directive if one is attached.
-9. If review finds issues, launch or invoke the Hotpot execution agent to fix only those findings (worktree directive still applies).
-10. Repeat review/fix up to 2 fix rounds.
-11. Decide which repairs are worth recording as reusable issue candidates by applying `@.hotpot/prompts/record-issue-candidate.md`; buffer them in memory only.
-12. Show the buffered candidate summary to the user and write only the user-approved ones via `hotpot issues candidate add`.
-13. Report the final state to the user for human confirmation.
+0. Resolve the active task file path and read the full task file contents.
+1. Parse `## Plan > ### Execution Strategy` and apply the `git-worktree: true|false` decision from the task file. Do not ask the user to choose a worktree strategy during execute.
+2. Verify the task file has enough execution structure.
+3. Detect TDD mode from `## Plan > ### Mode`.
+4. Launch or invoke the Hotpot execution agent with the full task file embedded inline, plus the worktree directive if one is attached.
+5. Collect changed files and diff after execution when git is available, scoped to the worktree if attached.
+6. Fetch relevant Hotpot issue memory for review.
+7. Launch or invoke the Hotpot review agent with task context, execution report, diff or fallback context, issue memory, and the worktree directive if one is attached.
+8. If review finds issues, launch or invoke the Hotpot execution agent to fix only those findings (worktree directive still applies).
+9. Repeat review/fix up to 2 fix rounds.
+10. Decide which repairs are worth recording as reusable issue candidates by applying `@.hotpot/prompts/record-issue-candidate.md`; buffer them in memory only.
+11. Show the buffered candidate summary to the user and write only the user-approved ones via `hotpot issues candidate add`.
+12. Report the final state to the user for human confirmation.
 
-## Worktree Decision (Step 0)
+## Execution Strategy (Step 1)
 
-Before resolving the active task path, decide whether this run will operate inside an isolated per-task git worktree. The decision is fully opt-in: the default is "no worktree, behavior unchanged from previous Hotpot versions".
+After resolving and reading the active task file, parse `## Plan > ### Execution Strategy`. The task file is the source of truth for worktree behavior. `/hotpot:execute` MUST NOT ask the user whether to use a worktree.
+
+### Parse The Task File Strategy
+
+Scan the `## Plan > ### Execution Strategy` block for exactly one machine-readable line matching either:
+
+- `- git-worktree: true`
+- `- git-worktree: false`
+
+Rules:
+
+- Missing `### Execution Strategy` block → STOP and tell the user to re-run `/hotpot:new` or revise the task file to include `## Plan > ### Execution Strategy` with `- git-worktree: true|false`.
+- Missing `git-worktree` line → STOP with the same repair instruction.
+- Any value other than lowercase `true` or `false` (`yes`, `no`, `1`, empty, etc.) → STOP with the same repair instruction.
+- Do not infer a default and do not ask the user to choose during execute.
+
+Remember the parsed value for the rest of this run.
 
 ### Probe Existing Attachment
 
-First check whether the active task already has a worktree attached (e.g. a previous interrupted run left one behind):
+Check whether the active task already has a worktree attached:
 
 ```bash
 hotpot worktree path
@@ -125,21 +140,16 @@ Run:
 hotpot worktree path
 ```
 
-- Non-empty stdout → a worktree is already attached. Announce the path to the user (`Worktree already attached: <path>`) and skip the question. Reuse this path for the rest of the run.
-- Empty stdout → no worktree attached. Proceed to **Ask The User** below.
-- Non-zero exit (e.g. no active task) → stop here and report; the existing "no active task" handling in Step 1 covers it.
+- Non-empty stdout → a worktree is already attached. Capture the path.
+- Empty stdout → no worktree is attached.
+- Non-zero exit → stop and report the command failure as a blocker.
 
-### Ask The User
+### Apply `git-worktree: true`
 
-Ask the user **exactly once** at the start of the run:
+When the task file says `git-worktree: true`:
 
-> Use an isolated git worktree for this task? It creates `<base_dir>/<task-id>/` on a new `hotpot/<task-id>` branch, and `/hotpot:finish-work` will offer merge / keep-branch / discard options when you're done. (default: no)
-
-Wait for an explicit yes / no. On any answer other than a clear yes, treat it as **no** and continue with the previous behavior (no worktree attached).
-
-### Create On Yes
-
-If the user says yes, run:
+- If `hotpot worktree path` returned a non-empty path, announce `Worktree already attached: <path>` and reuse it for the rest of the run.
+- If `hotpot worktree path` returned empty stdout, create the worktree immediately:
 
 ```bash
 hotpot worktree create
@@ -151,9 +161,16 @@ Run:
 hotpot worktree create
 ```
 
-Expect stdout to be a single JSON line containing at least `{"path": "...", "branch": "hotpot/<task-id>", "base_branch": "..."}`. Capture the `path` value — call it `<worktree-path>` below. Surface the JSON to the user so they can see the new worktree.
+  Expect stdout to be a single JSON line containing at least `{"path": "...", "branch": "hotpot/<task-id>", "base_branch": "..."}`. Capture the `path` value — call it `<worktree-path>` below. Surface the JSON to the user so they can see the new worktree.
 
-If the command fails (for example because the branch `hotpot/<task-id>` already exists, or `HEAD` is detached), report the error to the user and ask whether to retry, switch to a different task, or proceed without a worktree. Do not silently degrade.
+If `hotpot worktree create` fails (for example because the branch `hotpot/<task-id>` already exists, or `HEAD` is detached), report the error as a blocker. Do not ask whether to retry, switch to a different task, or proceed without a worktree; the task file strategy remains authoritative.
+
+### Apply `git-worktree: false`
+
+When the task file says `git-worktree: false`:
+
+- If `hotpot worktree path` returned empty stdout, do not create a worktree; continue in the current repository checkout.
+- If `hotpot worktree path` returned a non-empty path, STOP and report a strategy conflict: the task file says `git-worktree: false`, but the ledger has an attached worktree at `<path>`. Ask the user to re-run `/hotpot:new`, revise the task file, or repair the ledger/worktree state before executing. Do not continue in either directory.
 
 ### Apply For The Rest Of The Run
 
@@ -164,7 +181,7 @@ When a worktree path was captured (either from the probe or from create):
 - The fix-loop reuses the same `<worktree-path>` — do not re-prompt the user inside the loop.
 - `hotpot …` invocations stay untouched: those commands resolve `.hotpot/` against the main repo regardless of cwd.
 
-When no worktree was captured, all behavior below is identical to the previous version of this prompt.
+When no worktree was captured because the task file says `git-worktree: false`, all subsequent behavior runs in the current repository checkout.
 
 ## Resolve Active Task
 

@@ -16,7 +16,7 @@ Every command is **manually triggered** by the user. Hotpot never spawns automat
 
 ## Core Concepts
 
-- **Task file** (`<workspace>/tasks/<YYYY-MM-DD>-<title>.md`): the self-contained handoff document. Must include `## Task`, `## Plan`, and `## Execution Instructions`. `## Plan > ### Mode` carries `- tdd: true|false` for TDD vs default flow. `<title>` is the kebab-case slug passed to `task create --title`; the CLI collapses any residual whitespace runs in `title` into a single `-` when building the filename (defensive only — `/hotpot:new` produces kebab-case up front and no further slugify happens).
+- **Task file** (`<workspace>/tasks/<YYYY-MM-DD>-<title>.md`): the self-contained handoff document. Must include `## Task`, `## Plan`, and `## Execution Instructions`. `## Plan > ### Mode` carries `- tdd: true|false` for TDD vs default flow. `## Plan > ### Execution Strategy` carries `- git-worktree: true|false`, which is the authoritative execution-time worktree decision. `<title>` is the kebab-case slug passed to `task create --title`; the CLI collapses any residual whitespace runs in `title` into a single `-` when building the filename (defensive only — `/hotpot:new` produces kebab-case up front and no further slugify happens).
 - **Overview ledger** (`<workspace>/overview.jsonl`): per-user task ledger. Invariant: at most one row with `active=true && status=In Progress` per user.
 - **Issue candidates** (`.hotpot/issue-candidates.jsonl`): project-shared temporary review-memory candidates buffered during execute and promoted (or discarded) during finish-work. Legacy per-user candidate files under `.hotpot/workspaces/<username>/issue-candidates.jsonl` are migrated into this global file once and then truncated.
 - **Issues** (`.hotpot/issues.jsonl`): shared, long-lived review memory. Append-only via `hotpot issues promote`; never written without user approval.
@@ -54,8 +54,8 @@ User-facing commands. Slash commands are AI workflows; CLI subcommands are state
 | `hotpot init` | Install platform-specific assets and shared prompts. Idempotent. Use `--platform {claude\|opencode\|codex\|pi\|all}`. `--enable-vuepress` (or interactive yes) additionally runs `hotpot vuepress install`. |
 | `hotpot update` | Day-1 entry for collaborators. Detects installed platforms, refreshes assets, bootstraps the current user's workspace, merges the hotpot block into `.gitignore`, runs a health self-check. `--force` overwrites differing Hotpot-private owned templates while preserving merge/config/user-owned asset strategies. |
 | `hotpot vuepress {install,uninstall,start,stop,status}` | Manage the opt-in VuePress integration. `install` deploys `.hotpot-hub/` + `pnpm install` + opt-in prompts + flips `[vuepress] enabled = true`. `uninstall` reverses everything. `start` / `stop` / `status` manage the `pnpm docs:dev` process via `.hotpot-hub/vuepress.runtime.json`. See **VuePress Integration** below. |
-| `/hotpot:new` | Brainstorm → approve design → `hotpot task create [--switch\|--inactive]` → write the handoff task file. When VuePress is enabled, the closing flow additionally prompts the user to open the task in a browser and runs `hotpot vuepress start`. No code modifications during `new`. |
-| `/hotpot:execute` | Pre-flight `hotpot vuepress stop --if-running` (releases any dev server started by `/hotpot:new`) → resolve active task → run execution subagent → collect diff and relevant memory → run read-only review subagent → fix loop (≤ 2 rounds) → buffer issue candidates → ask user which to keep → write approved candidates via `hotpot issues candidate add`. |
+| `/hotpot:new` | Brainstorm → approve design → decide execution strategy (`## Plan > ### Execution Strategy`, including `git-worktree: true|false`) → `hotpot task create [--switch\|--inactive]` → write the handoff task file. When VuePress is enabled, the closing flow additionally prompts the user to open the task in a browser and runs `hotpot vuepress start`. No code modifications during `new`. |
+| `/hotpot:execute` | Pre-flight `hotpot vuepress stop --if-running` (releases any dev server started by `/hotpot:new`) → resolve and read active task → parse `## Plan > ### Execution Strategy` → create/reuse/forbid worktree according to `git-worktree: true|false` → run execution subagent → collect diff and relevant memory → run read-only review subagent → fix loop (≤ 2 rounds) → buffer issue candidates → ask user which to keep → write approved candidates via `hotpot issues candidate add`. |
 | `/hotpot:finish-work` | Confirm completion → summarize candidates → user-approve promotion → `hotpot issues promote` → `hotpot issues candidate clear` → optional git commit → `hotpot task done [--commit <SHA>]` → when finish-work created the task commit, auto-commit the task-done ledger diff as `chore: record task Done` → optional switch-and-continue to another in-progress task. |
 
 Platform-specific surfaces:
@@ -68,11 +68,12 @@ Platform-specific surfaces:
 ## Execution Flow (one task)
 
 ```
-new → task file written → execute → execution subagent
-                                  → review subagent (with relevant memory)
-                                  → fix loop (≤ 2 rounds)
-                                  → propose candidates (user approves subset)
-                                  → write approved candidates
+new → task file written (includes Execution Strategy)
+    → execute consumes strategy → execution subagent
+                                → review subagent (with relevant memory)
+                                → fix loop (≤ 2 rounds)
+                                → propose candidates (user approves subset)
+                                → write approved candidates
 finish-work → summarize candidates → user approves promotion
             → promote to issues.jsonl → clear candidates
             → optional git commit → mark task Done [+ SHA]
@@ -88,6 +89,13 @@ CLI surface for state transitions (always go through CLI, not ad-hoc file edits)
 - `hotpot issues relevant --changed-file <p> --keyword <k> --limit 5`
 - `hotpot issues promote` (stdin JSONL → `{"promoted":N}`)
 - `hotpot issues candidate {list,add,clear}` (`add` reads stdin JSONL → `{"added":N}`)
+
+Worktree execution contract:
+
+- `/hotpot:new` must resolve the execution strategy before it creates the task record and writes the task file. The strategy lives under `## Plan > ### Execution Strategy` and must include `- git-worktree: true` or `- git-worktree: false`.
+- `/hotpot:execute` only consumes the task-file strategy; it does not ask the user whether to use a worktree. Missing or invalid `git-worktree` values stop execution and require re-running `/hotpot:new` or revising the task file.
+- With `git-worktree: true`, execute reuses an already attached worktree from `hotpot worktree path`, or runs `hotpot worktree create` when none is attached. Create failures are blockers, not prompts to downgrade.
+- With `git-worktree: false`, execute runs in the current checkout. If `hotpot worktree path` reports an attached worktree, execute stops because the task-file strategy and ledger state conflict.
 
 ## VuePress Integration
 

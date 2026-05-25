@@ -15,3 +15,4 @@
 {"time":"2026-05-22","task_id":"2Prmow0FQ1","title":"guard-pi-hotpot-first-tool-call","commit":"f8fe8e1ebf6e68e2b350f13a7644873e9a1b793a","status":"Done","active":false}
 {"time":"2026-05-23","task_id":"okzInSJt72","title":"cleanup-test-artifacts-and-cache","commit":"e5d92b7f2264d5ec8f970311f7b2d9de155cb8df","status":"Done","active":false}
 {"time":"2026-05-24","task_id":"ag2o_JzonV","title":"add-update-force-option","commit":"e1887cbd0a8b50efe0370efdb343b8b0e4a1f668","status":"Done","active":false}
+{"time":"2026-05-25","task_id":"6zC_P_-393","title":"move-execute-questions-to-new","commit":null,"status":"In Progress","active":true}

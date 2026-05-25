@@ -15,7 +15,7 @@ Turn the user's initial idea into a clear executable task file for a future exec
 
 ## Output Language
 
-Apply the project language preference to every natural-language output produced by this command — brainstorming questions, design summaries, the entire body of the task `.md` you write, and the final per-command report. Structural anchors and machine-readable tokens (CLI flags, JSON keys, `ACTIVE_CONFLICT:`, markdown section headings like `## Task` / `## Plan` / `### Mode`, the `tdd: true|false` literal, kebab-case filename slugs) MUST stay in English. The full rule lives in:
+Apply the project language preference to every natural-language output produced by this command — brainstorming questions, design summaries, the entire body of the task `.md` you write, and the final per-command report. Structural anchors and machine-readable tokens (CLI flags, JSON keys, `ACTIVE_CONFLICT:`, markdown section headings like `## Task` / `## Plan` / `### Mode` / `### Execution Strategy`, the `tdd: true|false` and `git-worktree: true|false` literals, kebab-case filename slugs) MUST stay in English. The full rule lives in:
 
 @.hotpot/prompts/output-language.md
 
@@ -32,11 +32,12 @@ Codex / Pi (no `@path` expansion): the thin shell's substitution table maps this
 
 1. Classify the workspace (live vs stale actives) and, only if a live active exists, ask the user whether to switch or record-without-switching.
 2. Run brainstorming to understand and shape the task.
-3. Convert the approved design into an implementation plan.
-4. Create the Hotpot task record with a title, passing `--switch` / `--inactive` / no-flag based on step 1.
-5. Resolve the task file path (`hotpot task active --path` for the default/switch cases; derive from `TaskInfo` JSON for `--inactive` cases).
-6. **Create** the task file at the resolved path and write the finalized handoff content. The `.md` file does **not** exist after `hotpot task create` — only the new row in `overview.jsonl` exists. Use your platform's create-file tool (Claude `Write`, OpenCode `write`, Codex `apply_patch` with `*** Add File`, Pi `write`). **Do NOT `Read`, `Edit`, `ls`, or otherwise probe the path before writing.** A "File not found" from `Read` here is not actionable signal — it just means you haven't created the file yet. See "Writing The Task File" below for the full rule.
-7. Report the created task title, task file path, implementation task count, and whether the new task is the current active.
+3. Decide the execution strategy before planning, including at minimum whether this task must use an isolated `git-worktree`.
+4. Convert the approved design and execution strategy into an implementation plan.
+5. Create the Hotpot task record with a title, passing `--switch` / `--inactive` / no-flag based on step 1.
+6. Resolve the task file path (`hotpot task active --path` for the default/switch cases; derive from `TaskInfo` JSON for `--inactive` cases).
+7. **Create** the task file at the resolved path and write the finalized handoff content. The `.md` file does **not** exist after `hotpot task create` — only the new row in `overview.jsonl` exists. Use your platform's create-file tool (Claude `Write`, OpenCode `write`, Codex `apply_patch` with `*** Add File`, Pi `write`). **Do NOT `Read`, `Edit`, `ls`, or otherwise probe the path before writing.** A "File not found" from `Read` here is not actionable signal — it just means you haven't created the file yet. See "Writing The Task File" below for the full rule.
+8. Report the created task title, task file path, implementation task count, TDD mode, `git-worktree` strategy, and whether the new task is the current active.
 
 ## Active Task Handling
 
@@ -125,15 +126,51 @@ After the user approves the final design and **before** entering the Planning Fl
    - `Skip TDD mode` → write `tdd: false` in `## Plan > ### Mode` AND use the default flat checkbox layout.
 5. If the user picks Abort, stop the command without calling `hotpot task create`. The user can rerun the new-task flow later.
 
+## Execution Strategy Assessment
+
+After the user approves the final design and before the Planning Flow writes the task file, decide the task's execution strategy. This decision must be complete before calling `hotpot task create`; `/hotpot:execute` will not ask the user to choose an execution strategy later.
+
+At minimum, decide whether the task should use an isolated git worktree:
+
+1. Self-assess the task against these signals:
+   - Does the task involve risky edits, broad refactors, dependency changes, generated files, or experiments where isolating changes from the main checkout would reduce risk?
+   - Does the user need to continue other work in the main checkout while this task is in progress?
+   - Is the repository state clean enough and compatible with `hotpot worktree create`?
+   - Is the task small, prompt-only, documentation-only, or otherwise safe to run directly in the current checkout?
+2. Ask or confirm the `git-worktree` decision exactly once unless the user already stated it explicitly. List the recommended option first:
+
+   When recommending a worktree:
+
+   > This task looks safer in an isolated git worktree. Should the execution flow use `git-worktree: true`?
+   >
+   > - `Use git-worktree: true` (recommended)
+   > - `Use git-worktree: false`
+   > - `Abort and rethink the task`
+
+   When recommending the current checkout:
+
+   > This task looks safe to run in the current checkout. Should the execution flow use `git-worktree: false`?
+   >
+   > - `Use git-worktree: false` (recommended)
+   > - `Use git-worktree: true`
+   > - `Abort and rethink the task`
+
+3. Remember the decision for the Planning Flow and Task File Content step:
+   - `Use git-worktree: true` → write `git-worktree: true` in `## Plan > ### Execution Strategy`.
+   - `Use git-worktree: false` → write `git-worktree: false` in `## Plan > ### Execution Strategy`.
+4. If the user picks Abort, stop the command without calling `hotpot task create`.
+5. Structural field names and values stay English: `### Execution Strategy`, `git-worktree`, `true`, and `false` must not be translated.
+
 ## Planning Flow
 
-After the user approves the final design, convert the approved design into an implementation plan inside the Hotpot task file. Do not create a separate plan file.
+After the user approves the final design and after TDD / execution-strategy decisions are resolved, convert the approved design into an implementation plan inside the Hotpot task file. Do not create a separate plan file.
 
 - Map the files that will likely be created, modified, or tested before defining implementation tasks.
 - Break the work into bite-sized implementation tasks that can be executed and reviewed independently.
 - Each implementation task must include exact file paths when they are known from project exploration.
 - Each implementation task must include checkbox steps using `- [ ]` syntax.
 - Include validation commands with expected results.
+- Include `### Execution Strategy` directly under `## Plan`, after `### Mode`, with a machine-readable `- git-worktree: true|false` line plus any useful rationale.
 - Include code snippets only when they are known and useful; do not invent APIs or exact code that has not been verified.
 - If exact code cannot be safely determined during task creation, specify the exact files, functions, or patterns the execution agent must inspect before editing.
 - Do not write placeholders such as `TBD`, `TODO`, `implement later`, `add tests`, or `handle edge cases` without concrete instructions.
@@ -381,6 +418,11 @@ Write a complete handoff document to the active task file. The whole file should
 
 - tdd: <true or false>   <!-- machine-readable; the execute flow parses this line. -->
 
+### Execution Strategy
+
+- git-worktree: <true or false>   <!-- machine-readable; the execute flow parses this line. -->
+- rationale: <Why this task should or should not run in an isolated worktree.>
+
 ### File Map
 
 - Modify: `<exact/path>` - <why this file likely changes.>
@@ -488,6 +530,8 @@ The task file must be useful on its own for an execution sub-agent. Include enou
 - The `## Plan` section must include checkbox implementation steps and validation commands.
 - Do not create a vague task file that only describes the desired outcome without execution steps.
 - Do NOT omit the `## Plan > ### Mode` block. Write `tdd: true` or `tdd: false` explicitly so the execute flow can detect the mode unambiguously. A missing block is treated as `tdd: false`, but writing it explicitly avoids surprise.
+- Do NOT omit the `## Plan > ### Execution Strategy` block. Write `git-worktree: true` or `git-worktree: false` explicitly so the execute flow can decide worktree behavior without asking the user. A missing block, missing `git-worktree` line, or any value other than `true|false` causes `/hotpot:execute` to stop and ask the user to re-run `/hotpot:new` or revise the task file.
+- Resolve all worktree-related questions before calling `hotpot task create`; do not leave worktree decisions for `/hotpot:execute`.
 - When `tdd: true`, every `#### Task N` MUST follow the Red / Green / Refactor template with concrete test commands, exact failing-test names, exact implementation files, and exact verification commands. Do not write placeholders.
 - Do NOT `Read`, `Edit`, `ls`, or otherwise probe the task `.md` path before writing it. The `.md` is created by this command's write step, not by `hotpot task create`. A pre-write `Read` will return "File not found", waste a turn, and tempt you to second-guess the path.
 
@@ -518,5 +562,6 @@ After writing the task file, respond with:
 - Task file path.
 - Number of implementation tasks captured in the `Plan` section.
 - TDD mode: `enabled` or `disabled` (matches the `### Mode` block).
+- Execution strategy: `git-worktree: true` or `git-worktree: false`.
 - A short summary of what was captured.
 - Any remaining open questions, if present.

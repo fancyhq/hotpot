@@ -16,7 +16,7 @@
 
 ## 核心概念
 
-- **任务文件**（`<workspace>/tasks/<YYYY-MM-DD>-<title>.md`）：自包含的 handoff 文档。必须含 `## Task`、`## Plan`、`## Execution Instructions`。`## Plan > ### Mode` 携带 `- tdd: true|false` 决定 TDD 与默认两种流程。`<title>` 是 `task create --title` 传入的 kebab-case slug；CLI 在拼文件名时会把 `title` 内残留的连续空白折成单个 `-` 作为兜底（仅防御性兜底，`/hotpot:new` 已要求 AI 直接产出 kebab-case，不做更激进的 slugify）。
+- **任务文件**（`<workspace>/tasks/<YYYY-MM-DD>-<title>.md`）：自包含的 handoff 文档。必须含 `## Task`、`## Plan`、`## Execution Instructions`。`## Plan > ### Mode` 携带 `- tdd: true|false` 决定 TDD 与默认两种流程。`## Plan > ### Execution Strategy` 携带 `- git-worktree: true|false`，它是执行阶段是否使用 worktree 的权威决策。`<title>` 是 `task create --title` 传入的 kebab-case slug；CLI 在拼文件名时会把 `title` 内残留的连续空白折成单个 `-` 作为兜底（仅防御性兜底，`/hotpot:new` 已要求 AI 直接产出 kebab-case，不做更激进的 slugify）。
 - **任务台账**（`<workspace>/overview.jsonl`）：每个用户一份，强制不变式："同一时刻最多一条 `active=true && status=In Progress` 的行"。
 - **Issue 候选**（`.hotpot/issue-candidates.jsonl`）：项目级共享的临时 review 记忆候选，由 execute 缓冲并在 finish-work 中决策晋升或丢弃。旧版 `.hotpot/workspaces/<username>/issue-candidates.jsonl` 会一次性迁移进这个全局文件，然后清空旧文件。
 - **Issue 记忆**（`.hotpot/issues.jsonl`）：共享、长期。只能通过 `hotpot issues promote` 在用户确认后追加。
@@ -54,8 +54,8 @@ slash 命令是 AI 工作流；CLI 子命令是状态和资源管理。
 | `hotpot init` | 安装指定平台的资产与共享 prompt。幂等。`--platform {claude\|opencode\|codex\|pi\|all}`。`--enable-vuepress`（或交互式 yes）会额外跑 `hotpot vuepress install`。 |
 | `hotpot update` | 协作者 day-1 入口。自动探测已安装平台，刷新资产、bootstrap 当前用户 workspace、合并 hotpot 段到 `.gitignore`、跑健康自检。`--force` 会覆盖内容不同的 Hotpot 私有 owned 模板，同时保留 merge / config / 用户自有资产的既有策略。 |
 | `hotpot vuepress {install,uninstall,start,stop,status}` | 管理 opt-in VuePress 集成。`install` 部署 `.hotpot-hub/` + `pnpm install` + opt-in prompts + 翻 `[vuepress] enabled = true`；`uninstall` 反向回滚；`start`/`stop`/`status` 通过 `.hotpot-hub/vuepress.runtime.json` 管理 `pnpm docs:dev` 进程。详见 **VuePress 集成**。 |
-| `/hotpot:new` | 头脑风暴 → 用户批准设计 → `hotpot task create [--switch\|--inactive]` → 写入 handoff 任务文件。启用 VuePress 时收尾流程额外询问用户是否在浏览器查看并跑 `hotpot vuepress start`。new 阶段不改业务代码。 |
-| `/hotpot:execute` | 入口跑 `hotpot vuepress stop --if-running` 释放 `/hotpot:new` 可能启动的 dev server → 取活动任务 → 调起执行子代理 → 收集 diff 与相关记忆 → 调起只读 review 子代理 → 修复循环（≤ 2 轮）→ 缓冲 issue 候选 → 让用户挑选保留范围 → 通过 `hotpot issues candidate add` 落盘。 |
+| `/hotpot:new` | 头脑风暴 → 用户批准设计 → 决定执行策略（`## Plan > ### Execution Strategy`，包含 `git-worktree: true|false`）→ `hotpot task create [--switch\|--inactive]` → 写入 handoff 任务文件。启用 VuePress 时收尾流程额外询问用户是否在浏览器查看并跑 `hotpot vuepress start`。new 阶段不改业务代码。 |
+| `/hotpot:execute` | 入口跑 `hotpot vuepress stop --if-running` 释放 `/hotpot:new` 可能启动的 dev server → 取并读取活动任务 → 解析 `## Plan > ### Execution Strategy` → 按 `git-worktree: true|false` 创建、复用或禁止 worktree → 调起执行子代理 → 收集 diff 与相关记忆 → 调起只读 review 子代理 → 修复循环（≤ 2 轮）→ 缓冲 issue 候选 → 让用户挑选保留范围 → 通过 `hotpot issues candidate add` 落盘。 |
 | `/hotpot:finish-work` | 确认完成 → 汇总候选 → 用户批准晋升 → `hotpot issues promote` → `hotpot issues candidate clear` → 可选 git commit → `hotpot task done [--commit <SHA>]` → 当 task commit 由 finish-work 自动创建时，自动把 task-done ledger diff 提交为 `chore: record task Done` → 可选切换并续作下一条 In-Progress 任务。 |
 
 各平台具体承载方式：
@@ -68,11 +68,12 @@ slash 命令是 AI 工作流；CLI 子命令是状态和资源管理。
 ## 端到端流程（单个任务）
 
 ```
-new → 任务文件写好 → execute → 执行子代理
-                              → review 子代理（注入相关记忆）
-                              → 修复循环（≤ 2 轮）
-                              → 提议候选（用户挑选）
-                              → 落盘批准的候选
+new → 任务文件写好（含 Execution Strategy）
+    → execute 消费策略 → 执行子代理
+                     → review 子代理（注入相关记忆）
+                     → 修复循环（≤ 2 轮）
+                     → 提议候选（用户挑选）
+                     → 落盘批准的候选
 finish-work → 汇总候选 → 用户批准晋升
             → 写入 issues.jsonl → 清空候选
             → 可选 git commit → 标记任务 Done [+ SHA]
@@ -88,6 +89,13 @@ finish-work → 汇总候选 → 用户批准晋升
 - `hotpot issues relevant --changed-file <p> --keyword <k> --limit 5`
 - `hotpot issues promote`（stdin JSONL → `{"promoted":N}`）
 - `hotpot issues candidate {list,add,clear}`（`add` 从 stdin 读 JSONL → `{"added":N}`）
+
+worktree 执行契约：
+
+- `/hotpot:new` 必须在创建任务记录与写任务文件前解决执行策略。策略写在 `## Plan > ### Execution Strategy` 下，必须包含 `- git-worktree: true` 或 `- git-worktree: false`。
+- `/hotpot:execute` 只消费任务文件中的策略；它不会询问用户是否使用 worktree。缺失或非法的 `git-worktree` 值会使执行停止，并要求重新运行 `/hotpot:new` 或修订任务文件。
+- 当 `git-worktree: true` 时，execute 复用 `hotpot worktree path` 返回的已附着 worktree；如果没有附着，则运行 `hotpot worktree create`。创建失败是 blocker，不会提示降级。
+- 当 `git-worktree: false` 时，execute 在当前 checkout 中运行。如果 `hotpot worktree path` 报告已有附着 worktree，execute 会停止，因为任务文件策略与 ledger 状态冲突。
 
 ## VuePress 集成
 

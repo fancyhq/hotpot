@@ -50,6 +50,18 @@ hotpot init --platform opencode
 /hotpot:finish-work
 ```
 
+### 发布版本
+
+本项目使用 `release-please` 自动维护版本发布流程，基于 [Conventional Commits](https://www.conventionalcommits.org/) 规范。
+
+**发布流程：**
+
+1. 日常开发：向 `main` 分支提交遵循 Conventional Commits 规范的 PR（如 `feat:`、`fix:` 前缀）。
+2. 自动聚合：每次 push 到 `main` 后，GitHub Actions 会自动创建或更新一个 **Release PR**，汇总所有新的 conventional commits。
+3. 人工发布：当需要正式发布时，维护者手动合并 Release PR。合并后 `release-please` 会自动创建 Git tag 和 GitHub Release，并更新 `CHANGELOG.md` 和版本文件。
+
+> 普通功能分支合并到 `main` 不会立即创建 tag 或 GitHub Release，确保你可以累积多个功能后再统一发布。
+
 ## 执行流程
 
 ## 关于 vuepress

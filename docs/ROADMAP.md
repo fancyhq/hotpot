@@ -39,5 +39,5 @@
 - [ ] **feat**: 完善更新功能
 - [ ] **feat**: 增加卸载项目文件配置功能
 - [ ] **feat**: 增加 `npm` 、`bun` 、`cargo` 、`brew` 、`choco` `scoop` 等安装机制
-- [ ] **feat**: 增加 `github action` 机制，使用 `release-please` 完善发布流程，注意不能每次合并都创建新版本发布
+- [x] **feat**: 增加 `github action` 机制，使用 `release-please` 完善发布流程，注意不能每次合并都创建新版本发布
 - [ ] **feat**: 安装的提示都使用英文

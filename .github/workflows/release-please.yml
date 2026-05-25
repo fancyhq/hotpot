@@ -1,0 +1,42 @@
+# Release Please workflow for the hotpot Rust crate.
+# hotpot Rust crate 的 Release Please 工作流。
+#
+# Behavior:
+# - On every push to `main`, release-please creates or updates a single
+#   Release PR that aggregates conventional commits since the last release.
+# - Merging a feature branch into `main` does NOT immediately create a tag
+#   or GitHub Release. Only a maintainer merging the Release PR triggers
+#   the actual version release (tag + GitHub Release + changelog update).
+# 行为说明：
+# - 每次 push 到 main 分支时，release-please 创建或更新同一个 Release PR，
+#   汇聚自上次发布以来的所有 conventional commits。
+# - 普通功能分支合并到 main 不会立即创建 tag 或 GitHub Release。
+#   只有维护者人工合并 Release PR 后，release-please 才创建 tag、
+#   GitHub Release 并更新 changelog。
+#
+# See: https://github.com/googleapis/release-please-action
+# See: https://github.com/googleapis/release-please
+
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+  # Manual trigger as a fallback if the auto-trigger misses a push.
+  # 手动触发，作为自动触发遗漏时的补救入口。
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

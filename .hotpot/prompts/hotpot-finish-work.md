@@ -52,7 +52,7 @@ The active task `.md` MUST already exist on disk before this command runs. If `R
 7. On approval, promote via `hotpot issues promote` (stdin JSONL), then `hotpot issues candidate clear`.
 8. Detect git availability. If available, offer to create a commit (inside the worktree when attached). On approval, stage task-related files, build the message, run `git commit`, and capture the resulting SHA.
 9. If a worktree is attached, ask the user how to dispose of it: merge into the base branch / keep the branch / discard. Execute the choice (using `hotpot worktree remove`).
-10. Mark the task `Done` via `hotpot task done [--commit <SHA>]`. The SHA captured in step 8 is always the worktree-branch SHA — keep it honest regardless of the disposal choice.
+10. Mark the task `Done` via `hotpot task done [--commit <SHA>]`. The SHA captured in step 8 is always the worktree-branch SHA — keep it honest regardless of the disposal choice. After the command prints the updated `TaskInfo` JSON, it will additionally sync the task file's VuePress Overview `Status` cell to `Done` if the project has VuePress enabled; this is a CLI-side effect and not a manual edit by finish-work.
 11. If step 8 produced a commit through finish-work's automatic commit path, automatically commit any task-done ledger diff created by step 10. If the user skipped the commit or chose `I already committed manually — please use my HEAD as the task commit`, skip this ledger commit.
 12. Offer to switch to a remaining `In Progress` task and continue executing it inside the same session.
 13. Report the final state.
@@ -449,7 +449,7 @@ Keep the response factual. Do not restate the entire `## Task` section.
 - Never silently pick one row when multiple `active=true` rows exist.
 - The commit subject line must be ≤ 50 characters total, including the Conventional Commits prefix.
 - Do not include full diffs in promoted issues; rely on `source.summary` instead.
-- Do not modify the task file content during finish-work; checkbox updates belong to the execute flow.
+- Do not modify the task file's task body, checkboxes, or implementation progress during finish-work; those belong to the execute flow. The CLI's `hotpot task done` path is permitted to sync the VuePress Overview `Status` cell (when the project has VuePress enabled) as a best-effort UI update after a successful ledger transition — this is a CLI-side effect, not a finish-work manual edit.
 - Never silently resume a task without showing the candidate list and getting an explicit user choice.
 - Never run the review phase, the fix loop, or the candidate-recording step inside the resume bridge; those remain the execute flow's job.
 - Never silently pick a worktree disposal option. The user must choose merge / keep-branch / discard explicitly before `hotpot worktree remove` runs.

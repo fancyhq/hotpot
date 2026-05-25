@@ -85,7 +85,13 @@ CLI surface for state transitions (always go through CLI, not ad-hoc file edits)
 
 - `hotpot task create [--switch|--inactive] --title <t>` — enforces single-active invariant; bails with `ACTIVE_CONFLICT:` prefix on conflict (treat as machine-readable token, do not localize).
 - `hotpot task list --json`, `hotpot task active [--path|--count]`
-- `hotpot task done [--task-id <id>] [--commit <sha>]`, `hotpot task cancel`, `hotpot task resume`
+- `hotpot task done [--task-id <id>] [--commit <sha>]` — after the ledger is
+  updated, the CLI also syncs the task markdown file's VuePress Overview
+  `Status` cell to `Done` when VuePress is enabled. I/O errors produce
+  an `eprintln!` warning but do not fail the command. Skipped outcomes
+  (VuePress disabled, missing file, no Overview table) are silent.
+  The sync lives in `src/task/markdown.rs::sync_task_file_status`.
+- `hotpot task cancel`, `hotpot task resume`
 - `hotpot issues relevant --changed-file <p> --keyword <k> --limit 5`
 - `hotpot issues promote` (stdin JSONL → `{"promoted":N}`)
 - `hotpot issues candidate {list,add,clear}` (`add` reads stdin JSONL → `{"added":N}`)

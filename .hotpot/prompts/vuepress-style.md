@@ -37,8 +37,11 @@ Right after the H1 title and before `## Task`, emit a single
 
 Field semantics:
 
-- `Status` — always `In Progress` for a freshly created task (Done /
-  Cancelled are written later by `hotpot-execute` / `finish-work`).
+- `Status` — `In Progress` for a freshly created task. When the task is
+  completed via `hotpot task done`, the CLI automatically syncs this cell
+  to `Done` (VuePress-enabled projects only). Non-VuePress Markdown tasks
+  do not have this table and are unaffected. Cancelled is not currently
+  synced by the CLI — the cell remains at whatever value was last written.
 - `TDD` — the literal `true` or `false` from `## Plan > ### Mode > - tdd:`.
 - `Tasks` — count of `#### Task N` blocks under `### Implementation Tasks`.
 - `Risk` — AI self-assessment, one of `low` / `medium` / `high`.

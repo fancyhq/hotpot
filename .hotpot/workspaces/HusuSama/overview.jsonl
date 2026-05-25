@@ -16,4 +16,4 @@
 {"time":"2026-05-23","task_id":"okzInSJt72","title":"cleanup-test-artifacts-and-cache","commit":"e5d92b7f2264d5ec8f970311f7b2d9de155cb8df","status":"Done","active":false}
 {"time":"2026-05-24","task_id":"ag2o_JzonV","title":"add-update-force-option","commit":"e1887cbd0a8b50efe0370efdb343b8b0e4a1f668","status":"Done","active":false}
 {"time":"2026-05-25","task_id":"6zC_P_-393","title":"move-execute-questions-to-new","commit":"332af39cab2e9c15a76b6641f43b68ed31872cd6","status":"Done","active":false}
-{"time":"2026-05-25","task_id":"Sc2R3wzaQj","title":"sync-task-overview-status","commit":null,"status":"In Progress","active":true,"worktree_path":"/Users/bytedance/RustProjects/hotpot/.hotpot/worktrees/Sc2R3wzaQj","worktree_branch":"hotpot/Sc2R3wzaQj","worktree_base_branch":"main"}
+{"time":"2026-05-25","task_id":"Sc2R3wzaQj","title":"sync-task-overview-status","commit":"519a3d6577c8616d9b4a33ec03fac484a466adfb","status":"Done","active":false}

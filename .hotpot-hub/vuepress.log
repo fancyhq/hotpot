@@ -3,12 +3,12 @@
 > vuepress dev docs -- --clean-cache --port 8080
 
 - Initializing and preparing data
-✔ Initializing and preparing data - done in 346ms
+✔ Initializing and preparing data - done in 328ms
 
   vite v6.1.6 dev server running at:
 
   ➜  Local:   http://localhost:8080/
   ➜  Network: http://10.11.101.202:8080/
   ➜  Network: http://10.11.108.202:8080/
-  ➜  Network: http://10.255.206.18:8080/
+  ➜  Network: http://10.254.170.143:8080/
  ELIFECYCLE  Command failed with exit code 143.

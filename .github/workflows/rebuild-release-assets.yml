@@ -130,6 +130,10 @@ jobs:
           # GitHub CLI reads GH_TOKEN in non-interactive Actions runs.
           # GitHub CLI 在 Actions 非交互环境中读取 GH_TOKEN。
           GH_TOKEN: ${{ github.token }}
+          # The publish job does not check out the repository, so gh cannot
+          # infer the repository from .git and must receive it explicitly.
+          # 发布 job 不检出仓库，因此 gh 无法从 .git 推断仓库，必须显式传入。
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ inputs.tag_name }}
         shell: bash
         run: |

@@ -196,7 +196,9 @@ jobs:
 
       - name: Upload release assets
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          # GitHub CLI reads GH_TOKEN in non-interactive Actions runs.
+          # GitHub CLI 在 Actions 非交互环境中读取 GH_TOKEN。
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           TAG="${{ env.RELEASE_TAG }}"
@@ -204,3 +206,4 @@ jobs:
             gh release create "${TAG}" --title "${TAG}" --notes "Release ${TAG}" || \
             gh release view "${TAG}" >/dev/null
           gh release upload "${TAG}" "${ARCHIVE}" "${ARCHIVE}.sha256" --clobber
+          gh release view "${TAG}" --json assets --jq '.assets[].name'

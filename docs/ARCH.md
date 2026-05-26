@@ -137,6 +137,33 @@ The `pnpm docs:dev` process spawned by `hotpot vuepress start` must not leak pas
 
 Public env-var contract for VuePress: `HOTPOT_VUEPRESS_ENABLED` is always serialized (`"true"` or `"false"`); `HOTPOT_VUEPRESS_PORT` + `HOTPOT_VUEPRESS_URL` are emitted only when enabled.
 
+## npm Distribution
+
+The project ships a lightweight npm wrapper package at `npm/` (published as `@fancyhq/hotpot`) for global installation via `npm install -g @fancyhq/hotpot`. The installed CLI command remains `hotpot`.
+
+### Architecture
+
+- `npm/package.json` — defines the package metadata (published as `@fancyhq/hotpot`), a `bin.hotpot` entry, and a `postinstall` script.
+- `npm/bin/hotpot.js` — the CLI entry; forwards all arguments and stdio to the native Rust binary located in the same `bin/` directory.
+- `npm/scripts/install.js` — the postinstall script; detects `process.platform` / `process.arch`, maps to the release asset label, downloads the correct archive from GitHub Releases (`https://github.com/fancyhq/hotpot/releases/download/<tag>/hotpot-<tag>-<label>.<ext>`), extracts the binary into `bin/`, and sets executable permissions.
+
+Supported platforms: Linux x86_64/aarch64, macOS x86_64/aarch64, Windows x86_64. Unsupported platforms produce an English error message and exit with code 1.
+
+### Version Synchronization
+
+The npm package version is kept in sync with the Rust crate version via `release-please`. The `release-please-config.json` lists `npm/package.json` in the `extra-files` array, so Release PRs automatically update both `Cargo.toml` and `npm/package.json` from the conventional commits.
+
+### Release Workflow
+
+The `.github/workflows/release-please.yml` workflow includes a `publish-npm` job that runs after `build-release-assets` when a release is created. It checks out the release tag, runs `npm pack --dry-run` to validate, then publishes with `npm publish ./npm --access public` using `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}`. The `--access public` flag is required because scoped packages (`@fancyhq/hotpot`) default to private on npm.
+
+The `.github/workflows/rebuild-release-assets.yml` manual workflow does NOT publish npm — it only rebuilds and uploads binary assets for existing tags.
+
+### Prerequisites
+
+- The `NPM_TOKEN` repository secret must be configured with an npm automation token that has publish permissions for the `@fancyhq/hotpot` package.
+- npm installation requires network access to GitHub Releases. Offline environments or networks where GitHub is blocked will fail.
+
 ## Design Principles
 
 - **The task file is the contract.** New abstractions should map onto sections already in the task file rather than creating sidecar files.

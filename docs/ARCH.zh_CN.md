@@ -136,6 +136,33 @@ VuePress 是 **opt-in**：禁用项目里**不会**出现 VuePress 相关 prompt
 
 VuePress 的公共 env-var 契约：`HOTPOT_VUEPRESS_ENABLED` 始终输出（`"true"`/`"false"`）；`HOTPOT_VUEPRESS_PORT` + `HOTPOT_VUEPRESS_URL` 仅启用时输出。
 
+## npm 分发
+
+项目提供了一个轻量 npm wrapper 包（位于 `npm/`，发布为 `@fancyhq/hotpot`），用户可通过 `npm install -g @fancyhq/hotpot` 全局安装。安装后的 CLI 命令仍然是 `hotpot`。
+
+### 架构
+
+- `npm/package.json` — 定义包元数据（发布为 `@fancyhq/hotpot`）、`bin.hotpot` 入口和 `postinstall` 脚本。
+- `npm/bin/hotpot.js` — CLI 入口；将所有参数和 stdio 转发到同一 `bin/` 目录下的原生 Rust 二进制。
+- `npm/scripts/install.js` — postinstall 脚本；检测 `process.platform` / `process.arch`，映射到 release asset label，从 GitHub Releases 下载对应压缩包（`https://github.com/fancyhq/hotpot/releases/download/<tag>/hotpot-<tag>-<label>.<ext>`），解压二进制到 `bin/`，并设置可执行权限。
+
+支持平台：Linux x86_64/aarch64、macOS x86_64/aarch64、Windows x86_64。不支持的平台输出英文错误信息并以退出码 1 终止。
+
+### 版本同步
+
+npm 包版本通过 `release-please` 与 Rust crate 版本保持同步。`release-please-config.json` 在 `extra-files` 数组中列出了 `npm/package.json`，因此 Release PR 会根据 conventional commits 自动同时更新 `Cargo.toml` 和 `npm/package.json`。
+
+### 发布流程
+
+`.github/workflows/release-please.yml` 包含一个 `publish-npm` job，在 release 创建后、`build-release-assets` 完成后运行。它会检出 release tag、执行 `npm pack --dry-run` 验证、然后通过 `npm publish ./npm --access public` 及 `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` 发布。`--access public` 是必需的，因为 scoped 包（`@fancyhq/hotpot`）在 npm 上默认为私有。
+
+手动重建 workflow `.github/workflows/rebuild-release-assets.yml` **不**发布 npm——它只重建已有 tag 的二进制资产并上传。
+
+### 发布前提
+
+- 仓库必须配置 `NPM_TOKEN` secret，其值应为具有 `@fancyhq/hotpot` 包发布权限的 npm automation token。
+- npm 安装需要网络能访问 GitHub Releases。离线环境或 GitHub 被阻断时安装将失败。
+
 ## 设计原则
 
 - **任务文件即契约**：新增的抽象优先映射到任务文件已有章节，不要另起 sidecar 文件。

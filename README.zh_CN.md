@@ -81,6 +81,18 @@ hotpot update --username <你的用户名>
 
 - `language` : 产出物使用的语言，你可以根据自身的需求，设置不同的语言，比如 `简体中文` / `English` / `日本語` / `Français` 等
 
+### 通过 npm 安装
+
+hotpot 可以通过 npm 全局安装。npm 包（`@fancyhq/hotpot`）是一个轻量 wrapper，在安装阶段会从对应版本的 GitHub Release 下载当前平台所需的 Rust 二进制文件。虽然包位于 `@fancyhq` scope 下，但安装后的 CLI 命令仍然是 `hotpot`。
+
+```bash
+npm install -g @fancyhq/hotpot
+```
+
+安装完成后，`hotpot` CLI 命令即可在 PATH 中使用。
+
+> **注意：** npm 安装需要网络能够访问 GitHub Releases。如果你的网络无法访问 GitHub，安装将会失败。此时你可以直接从 [Releases](https://github.com/fancyhq/hotpot/releases) 页面下载二进制文件。
+
 ### 发布版本
 
 本项目使用 `release-please` 自动维护版本发布流程，基于 [Conventional Commits](https://www.conventionalcommits.org/) 规范。
@@ -89,8 +101,9 @@ hotpot update --username <你的用户名>
 
 1. 日常开发：向 `main` 分支提交遵循 Conventional Commits 规范的 PR（如 `feat:`、`fix:` 前缀）。
 2. 自动聚合：每次 push 到 `main` 后，GitHub Actions 会自动创建或更新一个 **Release PR**，汇总所有新的 conventional commits。
-3. 人工发布：当需要正式发布时，维护者手动合并 Release PR。合并后 `release-please` 会自动创建 Git tag 和 GitHub Release，并更新 `CHANGELOG.md` 和版本文件。
+3. 人工发布：当需要正式发布时，维护者手动合并 Release PR。合并后 `release-please` 会自动创建 Git tag 和 GitHub Release，并更新 `CHANGELOG.md` 和版本文件。`npm/package.json` 的版本也会随 Rust crate 版本同步更新。
 4. 自动构建：Release 创建后，GitHub Actions 自动为 Windows、macOS（x86_64 + aarch64）和 Linux（x86_64 + aarch64）编译 release 二进制，将压缩包和 SHA256 校验文件上传到对应的 GitHub Release。
+5. 自动 npm 发布：二进制资产构建上传完成后，GitHub Actions 自动将 npm wrapper 包发布到 npm registry，版本与 Release 一致。这需要仓库配置 `NPM_TOKEN` secret。
 
 > 普通功能分支合并到 `main` 不会立即创建 tag 或 GitHub Release，确保你可以累积多个功能后再统一发布。
 >

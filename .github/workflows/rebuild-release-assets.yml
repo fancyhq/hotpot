@@ -1,5 +1,12 @@
 # Rebuild release assets for an existing hotpot tag.
+# This workflow manually rebuilds and uploads binary assets for an
+# existing release tag. It does NOT publish to npm — npm publish
+# happens automatically only in the `release-please.yml` workflow
+# when a new release is created.
 # 为已有 hotpot tag 重新构建 release 资产。
+# 此 workflow 手动为已有 release tag 重建并上传二进制资产。
+# 它不发布 npm 包——npm 发布仅在 `release-please.yml` workflow
+# 创建新 release 时自动执行。
 
 name: Rebuild Release Assets
 

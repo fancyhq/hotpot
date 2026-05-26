@@ -193,3 +193,46 @@ jobs:
         run: |
           TAG="${{ needs.release-please.outputs.tag_name }}"
           gh release upload "${TAG}" "${ARCHIVE}" "${ARCHIVE}.sha256" --clobber
+
+  # Publish the npm wrapper package to the npm registry.
+  # Requires the NPM_TOKEN repository secret to be set.
+  # 将 npm wrapper 包发布到 npm registry。
+  # 需要设置 NPM_TOKEN 仓库 secret。
+  publish-npm:
+    needs:
+      - release-please
+      - build-release-assets
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # Checkout the exact release tag so npm/package.json has the
+        # correct version that matches the Rust crate.
+        # 检出精确 release tag，确保 npm/package.json 版本与 Rust crate 一致。
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ">=18"
+          registry-url: "https://registry.npmjs.org"
+
+      # Dry-run first to catch packaging issues before publishing.
+      # 先 dry-run，在正式发布前发现打包问题。
+      - name: Dry-run npm pack
+        run: npm pack --dry-run ./npm
+
+      # Publish the npm package.
+      # The package is scoped under @fancyhq; --access public is required
+      # because scoped packages default to private on npm.
+      # If NPM_TOKEN is missing, npm will fail with an authentication error,
+      # preventing a silent skip of the release.
+      # 发布 npm 包。包位于 @fancyhq scope 下，需要 --access public，
+      # 因为 scoped 包在 npm 上默认为私有。
+      # 如果缺少 NPM_TOKEN，npm 将因认证错误而失败，
+      # 避免正式 release 静默跳过 npm 发布。
+      - name: Publish to npm
+        run: npm publish ./npm --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

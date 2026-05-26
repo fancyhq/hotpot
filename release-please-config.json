@@ -3,7 +3,8 @@
     ".": {
       "release-type": "rust",
       "extra-files": [
-        "Cargo.lock"
+        "Cargo.lock",
+        "npm/package.json"
       ]
     }
   }

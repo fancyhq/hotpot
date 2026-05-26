@@ -81,6 +81,18 @@ Simple project configuration can be done in `.hotpot/config.toml`. Currently, ma
 
 - `language`: the language used for generated artifacts. You can set different languages according to your needs, such as `简体中文` / `English` / `日本語` / `Français`, and so on.
 
+### Installation via npm
+
+hotpot can be installed globally via npm. The npm package (`@fancyhq/hotpot`) is a lightweight wrapper that downloads the platform-specific Rust binary from the corresponding GitHub Release version during installation. Even though the package is scoped under `@fancyhq`, the installed CLI command remains `hotpot`.
+
+```bash
+npm install -g @fancyhq/hotpot
+```
+
+After installation, the `hotpot` CLI command is available on your PATH.
+
+> **Note:** The npm installation requires network access to GitHub Releases. If GitHub is not accessible from your network, the installation will fail. In that case, you can download the binary directly from the [Releases](https://github.com/fancyhq/hotpot/releases) page.
+
 ### Release Versions
 
 This project uses `release-please` to automatically maintain the version release process, based on the [Conventional Commits](https://www.conventionalcommits.org/) specification.
@@ -89,8 +101,9 @@ This project uses `release-please` to automatically maintain the version release
 
 1. Daily development: submit PRs to the `main` branch that follow Conventional Commits, such as the `feat:` and `fix:` prefixes.
 2. Automatic aggregation: after each push to `main`, GitHub Actions automatically creates or updates a **Release PR** that summarizes all new conventional commits.
-3. Manual release: when an official release is needed, maintainers manually merge the Release PR. After it is merged, `release-please` automatically creates the Git tag and GitHub Release, and updates `CHANGELOG.md` and version files.
+3. Manual release: when an official release is needed, maintainers manually merge the Release PR. After it is merged, `release-please` automatically creates the Git tag and GitHub Release, and updates `CHANGELOG.md` and version files. The version in `npm/package.json` is also updated automatically alongside the Rust crate version.
 4. Automatic build: after the Release is created, GitHub Actions automatically compiles release binaries for Windows, macOS (x86_64 + aarch64), and Linux (x86_64 + aarch64), then uploads archives and SHA256 checksum files to the corresponding GitHub Release.
+5. Automatic npm publish: after the binary assets are built and uploaded, GitHub Actions automatically publishes the npm wrapper package to the npm registry with the matching version. This requires the `NPM_TOKEN` repository secret to be configured.
 
 > Merging regular feature branches into `main` does not immediately create a tag or GitHub Release, so multiple features can be accumulated and released together later.
 >

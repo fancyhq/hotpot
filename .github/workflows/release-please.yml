@@ -33,14 +33,9 @@ on:
   push:
     branches:
       - main
-  # Manual trigger can rebuild assets for an existing release tag.
-  # 手动触发可为已有 release tag 重新构建并上传资产。
+  # Manual trigger as a fallback if the auto-trigger misses a push.
+  # 手动触发，作为自动触发遗漏时的补救入口。
   workflow_dispatch:
-    inputs:
-      tag_name:
-        description: "Release tag to rebuild assets for, for example hotpot-v0.3.1"
-        required: false
-        type: string
 
 permissions:
   contents: write
@@ -64,15 +59,12 @@ jobs:
           manifest-file: .release-please-manifest.json
 
   # Build and upload release binary assets for all target platforms.
-  # Runs when release-please creates a release, or when a manual dispatch
-  # provides an existing tag name for asset rebuilding.
+  # Only runs when release-please actually created a GitHub Release/tag.
   # 编译并上传所有目标平台的 release 二进制产物。
-  # 在 release-please 创建 release，或手动触发并提供 tag 时运行。
+  # 仅在 release-please 实际创建了 GitHub Release/tag 时运行。
   build-release-assets:
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag_name != '') }}
-    env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || needs.release-please.outputs.tag_name }}
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
     strategy:
       # One platform failure should not block others (e.g. aarch64 cross
       # compilation may fail while x86_64 works fine).
@@ -119,7 +111,7 @@ jobs:
         # 检出 release-please 创建的精确 tag，确保编译的二进制中
         # Cargo.toml 版本号正确。
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || needs.release-please.outputs.tag_name }}
+          ref: ${{ needs.release-please.outputs.tag_name }}
 
       - name: Install stable Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -152,7 +144,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $tag = "${{ env.RELEASE_TAG }}"
+          $tag = "${{ needs.release-please.outputs.tag_name }}"
           $assetLabel = "${{ matrix.asset_label }}"
           $archive = "hotpot-$tag-$assetLabel${{ matrix.archive_ext }}"
           $binary = "hotpot${{ matrix.suffix }}"
@@ -175,7 +167,7 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          TAG="${{ env.RELEASE_TAG }}"
+          TAG="${{ needs.release-please.outputs.tag_name }}"
           ASSET_LABEL="${{ matrix.asset_label }}"
           EXT="${{ matrix.archive_ext }}"
           ARCHIVE="hotpot-${TAG}-${ASSET_LABEL}${EXT}"
@@ -196,14 +188,8 @@ jobs:
 
       - name: Upload release assets
         env:
-          # GitHub CLI reads GH_TOKEN in non-interactive Actions runs.
-          # GitHub CLI 在 Actions 非交互环境中读取 GH_TOKEN。
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          TAG="${{ env.RELEASE_TAG }}"
-          gh release view "${TAG}" >/dev/null 2>&1 || \
-            gh release create "${TAG}" --title "${TAG}" --notes "Release ${TAG}" || \
-            gh release view "${TAG}" >/dev/null
+          TAG="${{ needs.release-please.outputs.tag_name }}"
           gh release upload "${TAG}" "${ARCHIVE}" "${ARCHIVE}.sha256" --clobber
-          gh release view "${TAG}" --json assets --jq '.assets[].name'

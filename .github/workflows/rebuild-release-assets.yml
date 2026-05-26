@@ -1,0 +1,142 @@
+# Rebuild release assets for an existing hotpot tag.
+# 为已有 hotpot tag 重新构建 release 资产。
+
+name: Rebuild Release Assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag to rebuild assets for, for example hotpot-v0.3.1"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-release-assets:
+    strategy:
+      # One platform failure should not block logs from other platforms.
+      # 单个平台失败不应阻止其他平台产生日志。
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            suffix: .exe
+            archive_ext: .zip
+            asset_label: windows-x86_64
+          # Build the Intel macOS target from the current hosted macOS image.
+          # 使用当前托管 macOS 镜像交叉编译 Intel macOS 目标。
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            suffix: ""
+            archive_ext: .tar.gz
+            asset_label: macos-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            suffix: ""
+            archive_ext: .tar.gz
+            asset_label: macos-aarch64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            suffix: ""
+            archive_ext: .tar.gz
+            asset_label: linux-x86_64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            suffix: ""
+            archive_ext: .tar.gz
+            asset_label: linux-aarch64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        # Checkout the exact release tag so Cargo.toml matches the binary version.
+        # 检出精确 release tag，确保 Cargo.toml 与二进制版本一致。
+        with:
+          ref: ${{ inputs.tag_name }}
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-linker for Linux aarch64
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+        env:
+          # Instruct Cargo to use the aarch64 cross-linker for that target.
+          # 通知 Cargo 在 aarch64 目标上使用交叉链接器。
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+
+      - name: Package Windows binary and generate SHA256
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tag = "${{ inputs.tag_name }}"
+          $assetLabel = "${{ matrix.asset_label }}"
+          $archive = "hotpot-$tag-$assetLabel${{ matrix.archive_ext }}"
+          $binary = "hotpot${{ matrix.suffix }}"
+
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/$binary" "staging/$binary"
+
+          Compress-Archive -Path "staging/$binary" -DestinationPath $archive -Force
+
+          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLower()
+          "$hash  $archive" | Out-File -Encoding ASCII "$archive.sha256"
+
+      - name: Package Unix binary and generate SHA256
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag_name }}"
+          ASSET_LABEL="${{ matrix.asset_label }}"
+          EXT="${{ matrix.archive_ext }}"
+          ARCHIVE="hotpot-${TAG}-${ASSET_LABEL}${EXT}"
+          BINARY="hotpot${{ matrix.suffix }}"
+
+          mkdir -p staging
+          cp "target/${{ matrix.target }}/release/${BINARY}" staging/
+
+          (cd staging && tar czf "../${ARCHIVE}" "${BINARY}")
+          shasum -a 256 "${ARCHIVE}" > "${ARCHIVE}.sha256"
+
+      - name: Upload packaged artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hotpot-${{ matrix.asset_label }}
+          path: |
+            hotpot-${{ inputs.tag_name }}-${{ matrix.asset_label }}${{ matrix.archive_ext }}
+            hotpot-${{ inputs.tag_name }}-${{ matrix.asset_label }}${{ matrix.archive_ext }}.sha256
+          if-no-files-found: error
+
+  publish-release-assets:
+    needs: build-release-assets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish assets to GitHub Release
+        env:
+          # GitHub CLI reads GH_TOKEN in non-interactive Actions runs.
+          # GitHub CLI 在 Actions 非交互环境中读取 GH_TOKEN。
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh release view "${TAG}" >/dev/null 2>&1 || \
+            gh release create "${TAG}" --title "${TAG}" --notes "Release ${TAG}"
+
+          gh release upload "${TAG}" dist/* --clobber
+          gh release view "${TAG}" --json assets --jq '.assets[].name'

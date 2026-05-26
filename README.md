@@ -10,6 +10,9 @@ Evolvable Agent Specification Framework
 
 ## Why HOTPOT Was Created
 
+> [!NOTE]
+> If you want to learn about the design of `HOTPOT`, see the [HOTPOT architecture document](docs/ARCH.md).
+
 - I like the `brainstorming` capability in `superpowers`, but I want it to be triggered proactively instead of through a `skill`.
 - Whenever code written by `AI` has issues or does not follow conventions, I have to manually update `AGENTS.md`, and sometimes I may even forget. I want `AI` to remember these things by itself so the same issues do not happen again next time.
 - Plain `markdown` files can be tiring to browse. I want more polished task files that can be accessed from a browser without affecting how `AI` parses them.

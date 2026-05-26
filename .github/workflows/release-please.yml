@@ -1,0 +1,195 @@
+# Release Please workflow for the hotpot Rust crate.
+# hotpot Rust crate 的 Release Please 工作流。
+#
+# Behavior:
+# - On every push to `main`, release-please creates or updates a single
+#   Release PR that aggregates conventional commits since the last release.
+# - Merging a feature branch into `main` does NOT immediately create a tag
+#   or GitHub Release. Only a maintainer merging the Release PR triggers
+#   the actual version release (tag + GitHub Release + changelog update).
+# - When a release is created, this workflow also builds and uploads
+#   release binaries for Windows, macOS (x86_64 + aarch64), and Linux
+#   (x86_64 + aarch64), along with SHA256 checksum files.
+# - Version selection is controlled by release-please. To force a specific
+#   next release version, merge a conventional commit that includes a
+#   `Release-As: x.y.z` footer.
+# 行为说明：
+# - 每次 push 到 main 分支时，release-please 创建或更新同一个 Release PR，
+#   汇聚自上次发布以来的所有 conventional commits。
+# - 普通功能分支合并到 main 不会立即创建 tag 或 GitHub Release。
+#   只有维护者人工合并 Release PR 后，release-please 才创建 tag、
+#   GitHub Release 并更新 changelog。
+# - 当 release 创建后，此 workflow 还会为 Windows、macOS（x86_64 + aarch64）
+#   和 Linux（x86_64 + aarch64）编译 release 二进制，上传压缩包和 SHA256 校验文件。
+# - 版本号由 release-please 控制。若要强制指定下一次发布版本，合入一条包含
+#   `Release-As: x.y.z` footer 的 conventional commit。
+#
+# See: https://github.com/googleapis/release-please-action
+# See: https://github.com/googleapis/release-please
+
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+  # Manual trigger as a fallback if the auto-trigger misses a push.
+  # 手动触发，作为自动触发遗漏时的补救入口。
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      # Expose release_created and tag_name so downstream jobs can gate
+      # and identify the release.
+      # 暴露 release_created 和 tag_name，供后续 job 做 gate 判断和版本识别。
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # Build and upload release binary assets for all target platforms.
+  # Only runs when release-please actually created a GitHub Release/tag.
+  # 编译并上传所有目标平台的 release 二进制产物。
+  # 仅在 release-please 实际创建了 GitHub Release/tag 时运行。
+  build-release-assets:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    strategy:
+      # One platform failure should not block others (e.g. aarch64 cross
+      # compilation may fail while x86_64 works fine).
+      # 单个平台失败不应阻塞其他平台。
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            suffix: .exe
+            archive_ext: .zip
+            asset_label: windows-x86_64
+          # Build the Intel macOS target from the current hosted macOS image
+          # instead of requesting `macos-13`. The `macos-13` Intel runner can
+          # sit in the queue for a long time before compilation even starts,
+          # while Rust can cross-compile this target from Apple Silicon macOS.
+          # 使用当前托管 macOS 镜像交叉编译 Intel macOS 目标，避免请求
+          # `macos-13` Intel runner 时长时间排队。
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            suffix: ""
+            archive_ext: .tar.gz
+            asset_label: macos-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            suffix: ""
+            archive_ext: .tar.gz
+            asset_label: macos-aarch64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            suffix: ""
+            archive_ext: .tar.gz
+            asset_label: linux-x86_64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            suffix: ""
+            archive_ext: .tar.gz
+            asset_label: linux-aarch64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        # Checkout the exact tag created by release-please so the built
+        # binary has the correct version embedded via Cargo.toml.
+        # 检出 release-please 创建的精确 tag，确保编译的二进制中
+        # Cargo.toml 版本号正确。
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # For Linux aarch64 cross-compilation we install the aarch64 GNU
+      # cross-linker. The project has no complex native C dependencies
+      # (libc/fs2 use standard syscall bindings), so a simple cross-linker
+      # is sufficient — no need for `cross`, `actions-rust-cross`, or other
+      # heavier tooling.
+      # 对于 Linux aarch64 交叉编译，需安装 aarch64 GNU 交叉链接器。
+      # 项目没有复杂的本地 C 依赖（libc/fs2 仅使用标准系统调用接口），
+      # 因此简单的交叉链接器即可满足需求，无需引入 `cross`、
+      # `actions-rust-cross` 等更重的工具。
+      - name: Install cross-linker for Linux aarch64
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+        env:
+          # Instruct Cargo to use the aarch64 cross-linker when building for
+          # that target. Harmless for other targets (the env var is ignored).
+          # 通知 Cargo 在编译 aarch64 目标时使用交叉链接器；
+          # 对其他目标无影响（环境变量会被忽略）。
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+
+      - name: Package Windows binary and generate SHA256
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tag = "${{ needs.release-please.outputs.tag_name }}"
+          $assetLabel = "${{ matrix.asset_label }}"
+          $archive = "hotpot-$tag-$assetLabel${{ matrix.archive_ext }}"
+          $binary = "hotpot${{ matrix.suffix }}"
+
+          # Stage the binary at the root of the archive (no nested path).
+          # 将二进制文件放在压缩包根目录（无嵌套路径）。
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/$binary" "staging/$binary"
+
+          Compress-Archive -Path "staging/$binary" -DestinationPath $archive -Force
+
+          # Generate SHA256 checksum in the standard format: <hash>  <filename>
+          # 以标准格式生成 SHA256 校验文件。
+          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLower()
+          "$hash  $archive" | Out-File -Encoding ASCII "$archive.sha256"
+
+          "ARCHIVE=$archive" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Package Unix binary and generate SHA256
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          TAG="${{ needs.release-please.outputs.tag_name }}"
+          ASSET_LABEL="${{ matrix.asset_label }}"
+          EXT="${{ matrix.archive_ext }}"
+          ARCHIVE="hotpot-${TAG}-${ASSET_LABEL}${EXT}"
+          BINARY="hotpot${{ matrix.suffix }}"
+
+          # Stage the binary at the root of the archive (no nested path).
+          # 将二进制文件放在压缩包根目录（无嵌套路径）。
+          mkdir -p staging
+          cp "target/${{ matrix.target }}/release/${BINARY}" staging/
+
+          (cd staging && tar czf "../${ARCHIVE}" "${BINARY}")
+
+          # Generate SHA256 checksum in the standard format: <hash>  <filename>
+          # 以标准格式生成 SHA256 校验文件。
+          shasum -a 256 "${ARCHIVE}" > "${ARCHIVE}.sha256"
+
+          echo "ARCHIVE=${ARCHIVE}" >> "${GITHUB_ENV}"
+
+      - name: Upload release assets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="${{ needs.release-please.outputs.tag_name }}"
+          gh release upload "${TAG}" "${ARCHIVE}" "${ARCHIVE}.sha256" --clobber

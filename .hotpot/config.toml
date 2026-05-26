@@ -1,0 +1,57 @@
+# Hotpot project configuration.
+#
+# This file is created once by `hotpot init` / `hotpot update` and is NEVER
+# overwritten on subsequent runs — Hotpot treats it as user-owned. Edit any
+# key below by uncommenting the line and setting your value. Delete the file
+# (and re-run `hotpot init`) to regenerate it with the latest documentation.
+#
+# Every key is optional; commented-out defaults match Hotpot's built-in
+# behavior, so an unedited file is equivalent to "use defaults everywhere".
+
+# ─── Natural-language settings ──────────────────────────────────────────────
+
+# Language Hotpot's slash commands use when replying to the user. The four
+# platform prompts read this value at runtime and translate their final
+# response accordingly. Code output (panic messages, CLI errors) stays in
+# English regardless of this setting.
+#
+# Examples: "English", "简体中文", "日本語", "Français".
+# Default: "English".
+#
+language = "简体中文"
+
+# ─── Worktree settings ──────────────────────────────────────────────────────
+#
+# Controls the optional per-task git-worktree feature triggered at the start
+# of `/hotpot:execute`. When the user opts in, Hotpot runs:
+#   git worktree add -b hotpot/<task-id> <base_dir>/<task-id>
+# and records the path on the task row in `overview.jsonl`.
+#
+# [worktree]
+
+# Directory where `hotpot worktree create` materializes per-task worktrees.
+# Relative paths resolve against the project root; absolute paths are used
+# as-is. The default location lives under `.hotpot/`, which is already
+# git-ignored by the block Hotpot manages in your `.gitignore`, so worktrees
+# stay untracked automatically.
+#
+# Default: ".hotpot/worktrees".
+#
+# base_dir = ".hotpot/worktrees"
+# VuePress 集成配置 / VuePress integration settings.
+#
+# enabled 由 `hotpot vuepress install` / `hotpot vuepress uninstall` 共同
+# 维护，**切勿手动修改**——它与 .hotpot-hub/ 目录及 .hotpot/prompts/
+# vuepress*.md 是绑定的原子状态。手动改只会让 enabled 与磁盘资源不一致，
+# 运行时找不到依赖。如需开/关 VuePress 请用：
+#   hotpot vuepress install [--port <p>]
+#   hotpot vuepress uninstall
+#
+# `enabled` is managed atomically by `hotpot vuepress install` /
+# `hotpot vuepress uninstall`. Do NOT flip it by hand — it is tied to
+# the `.hotpot-hub/` directory and opt-in prompt assets on disk, and a
+# manual flip leaves the runtime looking for dependencies that don't
+# exist. Use the install / uninstall subcommands above to toggle.
+[vuepress]
+enabled = true
+port = 8080

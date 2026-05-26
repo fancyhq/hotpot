@@ -1,0 +1,56 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hotpot hook claude pre-tool-use",
+            "timeout": 5,
+            "statusMessage": "Preparing Hotpot shell context"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "hotpot-execution|hotpot-review",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hotpot hook claude subagent-start",
+            "timeout": 5,
+            "statusMessage": "Preparing Hotpot review memory"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hotpot hook claude user-prompt-submit",
+            "timeout": 5,
+            "statusMessage": "Reasserting Hotpot output language"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hotpot hook claude session-end",
+            "timeout": 5,
+            "statusMessage": "Releasing Hotpot VuePress server"
+          }
+        ]
+      }
+    ]
+  }
+}

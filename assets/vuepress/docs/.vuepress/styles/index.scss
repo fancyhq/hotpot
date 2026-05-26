@@ -1,0 +1,209 @@
+/*!
+ * Hotpot VuePress task page enhancements.
+ *
+ * Loaded automatically by @vuepress/theme-default via the
+ * `docs/.vuepress/styles/index.scss` convention — no config.js
+ * registration required. Pure CSS-variable based: every color goes
+ * through `--vp-c-*` tokens so dark mode adapts for free; only the
+ * three TDD status colors (red/green/blue) are hard-coded hex.
+ *
+ * VuePress 2 (theme-default RC.88) conventions this file relies on:
+ *   - content wrapper: `<div vp-content>` → selector `[vp-content]`
+ *     (NOT VuePress 1's `.theme-default-content`).
+ *   - container plugin: VuePress 2 uses `plugin-markdown-hint` which
+ *     emits `.hint-container.{tip|warning|danger|info|note|details}`
+ *     (NOT markdown-it-container's `.custom-container`).
+ *   - border color variable: `--vp-c-gutter` (NOT VuePress 1's
+ *     `--vp-c-divider`).
+ * Renaming any of these in a future theme upgrade will silently
+ * disable this file — verify selectors match before bumping
+ * `@vuepress/theme-default`.
+ *
+ * This file is a purely decorative layer. Deleting it does not break
+ * VuePress startup, the home-page TaskIndex injection, or the sidebar
+ * generation — those depend only on config.js / client.js /
+ * sidebar.js / components/TaskIndex.vue.
+ *
+ * Hotpot 任务文件渲染增强样式。默认主题约定 styles/index.scss 自动
+ * @import；全部走 --vp-c-* CSS 变量，dark mode 自动跟随；仅 TDD 三色
+ * 写死十六进制。本文件是纯装饰层，删除不影响 VuePress 启动 /
+ * 首页 TaskIndex 注入 / sidebar 生成。
+ */
+
+/* ── 1. Page chrome | 页面整体 ─────────────────────────────── */
+/* Widen content area and loosen line-height for long task files. */
+/* 拉宽正文宽度并放宽行距，长任务文件读起来更舒适。 */
+[vp-content] {
+  max-width: 980px;
+  line-height: 1.72;
+}
+
+/* ── 2. Heading hierarchy | 标题层级强化 ──────────────────── */
+/* h2: section divider — left accent bar + soft gradient + bottom border. */
+/* h2：章节分隔——左侧彩条 + 浅渐变 + 下边框。 */
+[vp-content] h2 {
+  font-size: 1.55rem;
+  margin-top: 2.2rem;
+  padding: 0.35rem 0 0.45rem 0.8rem;
+  border-bottom: 1px solid var(--vp-c-gutter);
+  border-left: 4px solid var(--vp-c-accent);
+  background: linear-gradient(
+    to right,
+    var(--vp-c-bg-alt) 0%,
+    transparent 30%
+  );
+  border-radius: 3px 0 0 0;
+}
+
+/* h3: subsection — short left bar as an inline-block pseudo before the
+   text. Riding on text baseline instead of absolute-positioning ensures
+   the bar aligns with the heading text regardless of h3's natural
+   padding-top / margin-top imposed by the default theme. */
+/* h3：子节——彩条作为 inline-block 伪元素跟在文字前面，依靠
+   text baseline 自动对齐，避免默认主题给 h3 加的 padding-top /
+   margin-top 让 absolute 居中算出错位的中点。 */
+[vp-content] h3 {
+  font-size: 1.2rem;
+  margin-top: 1.8rem;
+}
+[vp-content] h3::before {
+  content: "";
+  display: inline-block;
+  width: 3px;
+  height: 0.95em;
+  background: var(--vp-c-accent);
+  border-radius: 2px;
+  margin-right: 0.55em;
+  vertical-align: -0.08em;
+}
+
+/* h4: inline tag style — used for per-task headings. */
+/* h4：内联 tag 风格——常用于每个 Task 的标题。 */
+[vp-content] h4 {
+  display: inline-block;
+  font-size: 1rem;
+  background: var(--vp-c-bg-alt);
+  padding: 0.25rem 0.7rem;
+  border-radius: 5px;
+  margin-top: 1.4rem;
+}
+
+/* TDD Red/Green/Refactor h5: pure-CSS colored dot + tinted text. */
+/* TDD 红/绿/重构 h5：纯 CSS 圆点 + 文字着色，避免 emoji 不专业。 */
+[vp-content] h5[id="red"]      { color: #d04848; }
+[vp-content] h5[id="green"]    { color: #3aa55e; }
+[vp-content] h5[id="refactor"] { color: #4285f4; }
+[vp-content] h5[id="red"]::before,
+[vp-content] h5[id="green"]::before,
+[vp-content] h5[id="refactor"]::before {
+  content: "";
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  border-radius: 50%;
+  margin-right: 0.55em;
+  vertical-align: 0;
+}
+[vp-content] h5[id="red"]::before      { background: #d04848; }
+[vp-content] h5[id="green"]::before    { background: #3aa55e; }
+[vp-content] h5[id="refactor"]::before { background: #4285f4; }
+
+/* ── 3. Containers | 自定义容器配色 ──────────────────────── */
+/* Uniform left bar width and corner radius across info/tip/warning/danger/details. */
+/* info / tip / warning / danger / details 容器统一左边框宽度与圆角。 */
+[vp-content] .hint-container {
+  border-left-width: 4px;
+  border-radius: 4px;
+  margin: 1rem 0;
+}
+
+/* Overview info container: tighten the embedded status table. */
+/* Overview info 容器：内嵌状态表格的 cell padding 收紧。 */
+[vp-content] .hint-container.info table {
+  margin: 0.4rem 0 0;
+  font-size: 0.92rem;
+}
+[vp-content] .hint-container.info table th,
+[vp-content] .hint-container.info table td {
+  padding: 0.4rem 0.7rem;
+}
+
+/* ── 4. Tables | 表格美化 ───────────────────────────────── */
+/* Full-width tables with header tint and zebra striping for File Map / **Files:** blocks. */
+/* 表格满宽 + header 着色 + 隔行变色——File Map / **Files:** 块更易扫读。 */
+[vp-content] table {
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+[vp-content] table th {
+  background: var(--vp-c-bg-alt);
+  font-weight: 600;
+  text-align: left;
+}
+[vp-content] table tr:nth-child(even) td {
+  background: var(--vp-c-bg-alt);
+}
+[vp-content] table code {
+  font-size: 0.88em;
+  padding: 0.12rem 0.4rem;
+}
+
+/* ── 5. Task list | 任务 checkbox 视觉 ───────────────────── */
+/* Hide list marker + line-through completed items for plan progress visibility. */
+/* 隐藏列表标记 + 已勾选项加删除线，进度一目了然。 */
+[vp-content] .task-list-item {
+  list-style: none;
+  padding-left: 0;
+}
+[vp-content] .task-list-item input[type="checkbox"] {
+  margin-right: 0.5rem;
+  transform: translateY(1px);
+  cursor: default;
+}
+/* markdown-it-task-lists tags checked items with .task-list-item-checked. */
+/* markdown-it-task-lists 给已勾选项标 .task-list-item-checked。 */
+[vp-content] .task-list-item-checked {
+  color: var(--vp-c-text-mute);
+  text-decoration: line-through;
+}
+
+/* ── H2 tight follow | H2 紧跟内容收紧 ──────────────────── */
+/* The section heading already has visible weight (left bar + bottom
+   border + gradient); the default 2rem gap below makes the page feel
+   sparse. Pull immediate siblings closer so the heading "owns" the
+   block beneath it. */
+/* H2 视觉权重已经够强（左彩条 + 下边框 + 渐变背景），默认 2rem
+   底间距太空。让紧跟元素更贴标题，强化"标题统领下方一段"的视觉。 */
+[vp-content] h2 + p,
+[vp-content] h2 + h3,
+[vp-content] h2 + .hint-container,
+[vp-content] h2 + ul,
+[vp-content] h2 + ol,
+[vp-content] h2 + table,
+[vp-content] h2 + hr {
+  margin-top: 0.65rem;
+}
+
+/* (Removed) H4 task card via CSS sibling selectors.
+   Earlier iterations gave H4 siblings a left accent bar via
+   `h4[id^="task-"] ~ *` etc. to simulate a "card" wrapping each
+   `#### Task N`. We dropped this in favor of an in-markdown
+   `::: info Task body` container that wraps the Files + Steps of
+   each Task — VuePress's hint-container styling is the single
+   source of "card" visual, no CSS sibling tricks required. See
+   `assets/prompts/vuepress-style.md` SHOULD G. */
+/* (已移除) H4 任务卡片身的 CSS 兄弟选择器装饰。
+   早期版本用 `h4[id^="task-"] ~ *` 给 H4 后续兄弟元素加 accent
+   bar 模拟卡片。后来改为在 markdown 里用 `::: info Task body`
+   容器包整个 Task body —— VuePress hint-container 自带的卡片
+   样式就是"卡片"视觉的唯一来源，不再需要 CSS sibling 技巧。
+   规则见 `assets/prompts/vuepress-style.md` 的 SHOULD G。 */
+
+/* ── 7. Anchor accents | 三个 Hotpot 固定锚点的微图标 ────── */
+/* Hotpot's three mandatory H2 anchors get an emoji prefix for visual scanning. */
+/* Hotpot 三个强制 H2 锚点加 emoji 前缀，便于视觉扫读。 */
+[vp-content] h2[id="task"]::before                   { content: "📋 "; }
+[vp-content] h2[id="plan"]::before                   { content: "🗺️ "; }
+[vp-content] h2[id="execution-instructions"]::before { content: "🚀 "; }

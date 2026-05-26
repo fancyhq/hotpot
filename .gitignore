@@ -1,0 +1,29 @@
+/target
+PLANS.md
+
+# 由 `hotpot init` 从 `assets/prompts/` 复制到 `.hotpot/prompts/`；保持
+# `assets/prompts/` 作为唯一签入源以避免漂移。
+# Populated by `hotpot init` from `assets/prompts/` into `.hotpot/prompts/`;
+# keep `assets/prompts/` as the single checked-in source of truth.
+
+# hotpot:begin (managed by `hotpot update`; do not edit between these markers)
+# Only ephemeral / per-machine artifacts go here. User-owned content under
+# `.hotpot/` — `config.toml`, `prompts/`, `workspaces/` (overview, candidates,
+# task files) — is intentionally tracked so collaborators stay in sync.
+#
+# Transient visual-companion outputs from `/hotpot:new` brainstorming sessions.
+/.hotpot/brainstorm/
+# Per-task git worktrees created by `hotpot worktree create`. These are
+# linked-worktree directories that git itself manages; never commit them.
+/.hotpot/worktrees/
+# Advisory lock sidecars managed by src/lock.rs; never commit.
+/.hotpot/**/*.lock
+# hotpot:end
+
+/.hotpot-hub/node_modules
+/.hotpot-hub/docs/*
+!/.hotpot-hub/docs/.vuepress/
+!/.hotpot-hub/docs/.vuepress/**
+!/.hotpot-hub/docs/README.md
+/.hotpot-hub/docs/.vuepress/.cache/
+/.hotpot-hub/docs/.vuepress/.temp/

@@ -1,0 +1,25 @@
+# Hotpot Codex project hooks.
+
+[features]
+codex_hooks = true
+
+[[hooks.PreToolUse]]
+matcher = "Bash|shell|exec"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "hotpot hook codex pre-tool-use"
+
+[[hooks.SessionStart]]
+matcher = "startup|resume|clear"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "hotpot hook codex session-start"
+
+[[hooks.UserPromptSubmit]]
+matcher = ""
+
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "hotpot hook codex user-prompt-submit"

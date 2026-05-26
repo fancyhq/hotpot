@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/fancyhq/hotpot/compare/hotpot-v0.3.1...hotpot-v0.3.2) (2026-05-26)
+
+
+### Features
+
+* add npm installation ([c51d658](https://github.com/fancyhq/hotpot/commit/c51d65878a8fdf5ed79abbf0bcc6a1c05d9a2f0e))
+
 ## [0.3.1](https://github.com/fancyhq/hotpot/compare/hotpot-v0.3.0...hotpot-v0.3.1) (2026-05-25)
 
 

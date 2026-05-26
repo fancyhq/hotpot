@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Evolvable Agent Specification Framework - CLI tool for orchestrating AI coding agents",
   "bin": {
     "hotpot": "bin/hotpot.js"
@@ -19,7 +19,12 @@
     "type": "git",
     "url": "git+https://github.com/fancyhq/hotpot.git"
   },
-  "keywords": ["hotpot", "agent", "ai", "orchestrator"],
+  "keywords": [
+    "hotpot",
+    "agent",
+    "ai",
+    "orchestrator"
+  ],
   "author": "",
   "license": "MIT",
   "bugs": {
@@ -29,6 +34,13 @@
   "engines": {
     "node": ">=18"
   },
-  "os": ["darwin", "linux", "win32"],
-  "cpu": ["x64", "arm64"]
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
 }

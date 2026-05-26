@@ -24,6 +24,18 @@ Evolvable Agent Specification Framework
 - `TDD` hit mechanism: `TDD` is enabled only when Hotpot determines it is needed, but the choice is still yours. `AI` only judges, and does not decide.
 - Subagent failure detection and recovery.
 
+## 📦 Installation
+
+### Direct Installation
+
+Download the binary archive for your platform from the `release` page, extract it, and add it to your environment variables.
+
+### Installation via npm
+
+```bash
+npm i -g @fancyhq/hotpot
+```
+
 ## 🖌️ Usage
 
 ### Project Initialization

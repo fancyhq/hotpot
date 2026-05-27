@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.4](https://github.com/fancyhq/hotpot/compare/hotpot-ai-v0.3.3...hotpot-ai-v0.3.4) (2026-05-27)
+
+
+### Features
+
+* add crates and choco release ([c54a7b6](https://github.com/fancyhq/hotpot/commit/c54a7b646175e610eaf677a201cc884f0466bc35))
+* add npm installation ([c51d658](https://github.com/fancyhq/hotpot/commit/c51d65878a8fdf5ed79abbf0bcc6a1c05d9a2f0e))
+* update package name ([b4c5b72](https://github.com/fancyhq/hotpot/commit/b4c5b720418ad497fb0790a5606f1e5c60750913))
+
 ## [0.3.3](https://github.com/fancyhq/hotpot/compare/hotpot-v0.3.2...hotpot-v0.3.3) (2026-05-27)
 
 

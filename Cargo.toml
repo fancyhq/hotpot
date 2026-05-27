@@ -1,5 +1,5 @@
 [package]
-name = "hotpot"
+name = "hotpot-ai"
 version = "0.3.3"
 edition = "2024"
 license = "MIT"
@@ -9,6 +9,10 @@ description = "Evolvable Agent Specification Framework — cross-platform task o
 readme = "README.md"
 keywords = ["agent", "ai", "task-orchestrator", "claude-code", "opencode"]
 categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "hotpot"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.102"

@@ -120,10 +120,10 @@ npm install -g @fancyhq/hotpot
 如果你已安装 Rust 工具链，可以通过 crates.io 安装 hotpot：
 
 ```bash
-cargo install hotpot
+cargo install hotpot-ai
 ```
 
-这会从源码编译 hotpot。需要 Rust 工具链。
+这会从源码编译 hotpot。安装后的 CLI 命令仍然是 `hotpot`。需要 Rust 工具链。
 
 ### 通过 Chocolatey 安装
 

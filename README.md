@@ -120,10 +120,10 @@ After installation, the `hotpot` CLI command is available on your PATH.
 If you have Rust installed, you can install hotpot from crates.io:
 
 ```bash
-cargo install hotpot
+cargo install hotpot-ai
 ```
 
-This compiles hotpot from source. Requires the Rust toolchain.
+This compiles hotpot from source. The installed CLI command is still `hotpot`. Requires the Rust toolchain.
 
 ### Installation via Chocolatey
 

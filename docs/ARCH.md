@@ -175,7 +175,7 @@ Hotpot is distributed through multiple package channels. This section covers the
 |---------|------|-------------------|-----------------|--------|
 | GitHub Release (binary assets) | Direct download | Yes (assets built + uploaded) | `GITHUB_TOKEN` (built-in) | ✅ Production |
 | npm (`@fancyhq/hotpot`) | npm registry | Yes (workflow `publish-npm` job) | `NPM_TOKEN` | ✅ Production |
-| crates.io (`hotpot`) | Rust crate registry | Yes (workflow `publish-crates-io` job) | `CARGO_REGISTRY_TOKEN` | ✅ New |
+| crates.io (`hotpot-ai`) | Rust crate registry | Yes (workflow `publish-crates-io` job) | `CARGO_REGISTRY_TOKEN` | ✅ New |
 | Chocolatey (`hotpot`) | Chocolatey Community Repository | Yes (workflow `publish-chocolatey` job) | `CHOCO_API_KEY` | ✅ New |
 
 ### Asset Naming Convention
@@ -215,7 +215,7 @@ The `publish-crates-io` job in `.github/workflows/release-please.yml`:
 **Prerequisites:**
 - `CARGO_REGISTRY_TOKEN` repository secret configured with a crates.io API token.
 - Cargo metadata (`description`, `readme`, `keywords`, `categories`) must be present in `Cargo.toml`.
-- The package is published under the name `hotpot`.
+- The package is published under the name `hotpot-ai`; `Cargo.toml` keeps an explicit `[[bin]]` target named `hotpot`, so `cargo install hotpot-ai` still installs the `hotpot` CLI command.
 
 ### Chocolatey Channel
 

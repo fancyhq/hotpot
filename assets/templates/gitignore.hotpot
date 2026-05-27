@@ -13,6 +13,7 @@
 # hotpot:end
 
 /.hotpot-hub/node_modules
+/.hotpot-hub/*.log
 /.hotpot-hub/docs/*
 !/.hotpot-hub/docs/.vuepress/
 !/.hotpot-hub/docs/.vuepress/**

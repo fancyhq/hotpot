@@ -21,9 +21,11 @@ PLANS.md
 # hotpot:end
 
 /.hotpot-hub/node_modules
+/.hotpot-hub/*.log
 /.hotpot-hub/docs/*
 !/.hotpot-hub/docs/.vuepress/
 !/.hotpot-hub/docs/.vuepress/**
 !/.hotpot-hub/docs/README.md
 /.hotpot-hub/docs/.vuepress/.cache/
 /.hotpot-hub/docs/.vuepress/.temp/
+

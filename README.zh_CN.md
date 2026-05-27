@@ -35,9 +35,44 @@
 
 ### 通过 npm 安装
 
+hotpot 可以通过 npm 全局安装。npm 包（`@fancyhq/hotpot`）是一个轻量 wrapper，在安装阶段会从对应版本的 GitHub Release 下载当前平台所需的 Rust 二进制文件。虽然包位于 `@fancyhq` scope 下，但安装后的 CLI 命令仍然是 `hotpot`。
+
 ```bash
-npm i -g @fancyhq/hotpot
+npm install -g @fancyhq/hotpot
 ```
+
+安装完成后，`hotpot` CLI 命令即可在 PATH 中使用。
+
+> **注意：** npm 安装需要网络能够访问 GitHub Releases。如果你的网络无法访问 GitHub，安装将会失败。此时你可以直接从 [Releases](https://github.com/fancyhq/hotpot/releases) 页面下载二进制文件。
+>
+> **自定义/内部 npm registry 说明：** 如果你的 npm 配置了自定义 registry（例如公司内网镜像），`@fancyhq/hotpot` 包可能无法在该 registry 中找到。你可以通过以下任一方式从公共 npm registry 直接安装：
+>
+> - **单次安装：** `npm install -g @fancyhq/hotpot --registry https://registry.npmjs.org`
+> - **持久化 scope 配置：** `npm config set @fancyhq:registry https://registry.npmjs.org/`
+>
+> 第二种方式仅影响 `@fancyhq` scope 下的包，不会改变你默认 registry 对其他包的使用。
+
+### 通过 crates.io 安装
+
+如果你已安装 Rust 工具链，可以通过 crates.io 安装 hotpot：
+
+```bash
+cargo install hotpot-ai
+```
+
+这会从源码编译 hotpot。安装后的 CLI 命令仍然是 `hotpot`。需要 Rust 工具链。
+
+### 通过 Chocolatey 安装
+
+Hotpot 已发布到 Chocolatey，支持 Windows 平台：
+
+```bash
+choco install hotpot
+```
+
+Chocolatey 包会在每次 release 时自动发布到 Chocolatey Community Repository。
+
+> **注意：** Chocolatey 包审核可能需要一些时间。如果包尚未可用，请稍后再试或使用直接下载方式。
 
 ## 🖌️使用
 
@@ -95,47 +130,6 @@ hotpot update --username <你的用户名>
 > 不要手动修改 `vuepress` 的配置，比如直接修改 `vuepress` 的状态为 `enabled = true`，因为 `vuepress` 还会有依赖目录，所以手动修改并不会生效
 
 - `language` : 产出物使用的语言，你可以根据自身的需求，设置不同的语言，比如 `简体中文` / `English` / `日本語` / `Français` 等
-
-### 通过 npm 安装
-
-hotpot 可以通过 npm 全局安装。npm 包（`@fancyhq/hotpot`）是一个轻量 wrapper，在安装阶段会从对应版本的 GitHub Release 下载当前平台所需的 Rust 二进制文件。虽然包位于 `@fancyhq` scope 下，但安装后的 CLI 命令仍然是 `hotpot`。
-
-```bash
-npm install -g @fancyhq/hotpot
-```
-
-安装完成后，`hotpot` CLI 命令即可在 PATH 中使用。
-
-> **注意：** npm 安装需要网络能够访问 GitHub Releases。如果你的网络无法访问 GitHub，安装将会失败。此时你可以直接从 [Releases](https://github.com/fancyhq/hotpot/releases) 页面下载二进制文件。
->
-> **自定义/内部 npm registry 说明：** 如果你的 npm 配置了自定义 registry（例如公司内网镜像），`@fancyhq/hotpot` 包可能无法在该 registry 中找到。你可以通过以下任一方式从公共 npm registry 直接安装：
->
-> - **单次安装：** `npm install -g @fancyhq/hotpot --registry https://registry.npmjs.org`
-> - **持久化 scope 配置：** `npm config set @fancyhq:registry https://registry.npmjs.org/`
->
-> 第二种方式仅影响 `@fancyhq` scope 下的包，不会改变你默认 registry 对其他包的使用。
-
-### 通过 crates.io 安装
-
-如果你已安装 Rust 工具链，可以通过 crates.io 安装 hotpot：
-
-```bash
-cargo install hotpot-ai
-```
-
-这会从源码编译 hotpot。安装后的 CLI 命令仍然是 `hotpot`。需要 Rust 工具链。
-
-### 通过 Chocolatey 安装
-
-Hotpot 已发布到 Chocolatey，支持 Windows 平台：
-
-```bash
-choco install hotpot
-```
-
-Chocolatey 包会在每次 release 时自动发布到 Chocolatey Community Repository。
-
-> **注意：** Chocolatey 包审核可能需要一些时间。如果包尚未可用，请稍后再试或使用直接下载方式。
 
 ## 关于 vuepress
 

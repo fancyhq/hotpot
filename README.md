@@ -35,9 +35,42 @@ Download the binary archive for your platform from the `release` page, extract i
 
 ### Installation via npm
 
+hotpot can be installed globally via npm. The npm package (`@fancyhq/hotpot`) is a lightweight wrapper that downloads the platform-specific Rust binary from the corresponding GitHub Release version during installation. Even though the package is scoped under `@fancyhq`, the installed CLI command remains `hotpot`.
+
 ```bash
-npm i -g @fancyhq/hotpot
+npm install -g @fancyhq/hotpot
 ```
+
+After installation, the `hotpot` CLI command is available on your PATH.
+
+> **Note:** The npm installation requires network access to GitHub Releases. If GitHub is not accessible from your network, the installation will fail. In that case, you can download the binary directly from the [Releases](https://github.com/fancyhq/hotpot/releases) page.
+>
+> **Note for custom/internal npm registries:** If your npm is configured to use a custom registry (e.g., an internal mirror), the `@fancyhq/hotpot` package may not be available there. You can install it directly from the public npm registry using one of these approaches:
+>
+> - **One-off install:** `npm install -g @fancyhq/hotpot --registry https://registry.npmjs.org`
+> - **Persistent scope configuration:** `npm config set @fancyhq:registry https://registry.npmjs.org/`
+>
+> The second approach only affects packages under the `@fancyhq` scope, leaving your default registry unchanged for all other packages.
+
+### Installation via crates.io
+
+If you have Rust installed, you can install hotpot from crates.io:
+
+```bash
+cargo install hotpot-ai
+```
+
+This compiles hotpot from source. The installed CLI command is still `hotpot`. Requires the Rust toolchain.
+
+### Installation via Chocolatey
+
+Hotpot is published to Chocolatey for Windows. A Chocolatey package (`hotpot`) is automatically published to the Chocolatey Community Repository during each release:
+
+```bash
+choco install hotpot
+```
+
+> **Note:** Chocolatey package moderation can take some time after publication. If the package is not yet available, please check back later or use the direct download option.
 
 ## 🖌️ Usage
 
@@ -95,49 +128,6 @@ Simple project configuration can be done in `.hotpot/config.toml`. Currently, ma
 > Do not manually modify the `vuepress` configuration, such as directly changing the `vuepress` status to `enabled = true`, because `vuepress` also has dependent directories. Manual changes will not take effect.
 
 - `language`: the language used for generated artifacts. You can set different languages according to your needs, such as `简体中文` / `English` / `日本語` / `Français`, and so on.
-
-### Installation via npm
-
-hotpot can be installed globally via npm. The npm package (`@fancyhq/hotpot`) is a lightweight wrapper that downloads the platform-specific Rust binary from the corresponding GitHub Release version during installation. Even though the package is scoped under `@fancyhq`, the installed CLI command remains `hotpot`.
-
-```bash
-npm install -g @fancyhq/hotpot
-```
-
-After installation, the `hotpot` CLI command is available on your PATH.
-
-> **Note:** The npm installation requires network access to GitHub Releases. If GitHub is not accessible from your network, the installation will fail. In that case, you can download the binary directly from the [Releases](https://github.com/fancyhq/hotpot/releases) page.
->
-> **Note for custom/internal npm registries:** If your npm is configured to use a custom registry (e.g., an internal mirror), the `@fancyhq/hotpot` package may not be available there. You can install it directly from the public npm registry using one of these approaches:
->
-> - **One-off install:** `npm install -g @fancyhq/hotpot --registry https://registry.npmjs.org`
-> - **Persistent scope configuration:** `npm config set @fancyhq:registry https://registry.npmjs.org/`
->
-> The second approach only affects packages under the `@fancyhq` scope, leaving your default registry unchanged for all other packages.
-
-### Installation via crates.io
-
-If you have Rust installed, you can install hotpot from crates.io:
-
-```bash
-cargo install hotpot-ai
-```
-
-This compiles hotpot from source. The installed CLI command is still `hotpot`. Requires the Rust toolchain.
-
-### Installation via Chocolatey
-
-Hotpot is published to Chocolatey for Windows. A Chocolatey package (`hotpot`) is automatically published to the Chocolatey Community Repository during each release:
-
-```bash
-choco install hotpot
-```
-
-> **Note:** Chocolatey package moderation can take some time after publication. If the package is not yet available, please check back later or use the direct download option.
-
-### Release Versions
-
-This project uses `release-please` to automatically maintain the version release process, based on the [Conventional Commits](https://www.conventionalcommits.org/) specification.
 
 ## About VuePress
 

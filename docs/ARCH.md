@@ -159,6 +159,16 @@ The `.github/workflows/release-please.yml` workflow includes a `publish-npm` job
 
 The `.github/workflows/rebuild-release-assets.yml` manual workflow does NOT publish npm — it only rebuilds and uploads binary assets for existing tags.
 
+### Wrapper Executable Bit Contract
+
+The npm CLI entry point `npm/bin/hotpot.js` must remain executable on Unix so that shells like fish (which check the symlink target's executable bit) can run the installed `hotpot` command. This is enforced by:
+
+- **Source file mode**: `npm/bin/hotpot.js` is committed with executable permission (`chmod +x`, mode `0o755`). Git tracks the mode change (`100644 → 100755`).
+- **Tarball validation**: `npm pack --dry-run --json ./npm` captures the file mode of each tarball entry. Regression tests in `npm/scripts/install.test.js` assert that the `bin/hotpot.js` entry has executable bits set (`mode & 0o111 !== 0`).
+- **Deterministic (no-network) tests**: `node --test npm/scripts/install.test.js` runs the full test suite including executable bit, bin mapping, tarball file inclusion, and `setExecutable` helper validation, without performing any network I/O.
+
+The `npm/scripts/install.js` `setExecutable` helper (used for the downloaded native binary) is also exported and tested independently via `node:test`. Any change that removes the npm wrapper's executable permission or the native binary's chmod call will be caught by CI.
+
 ### Prerequisites
 
 - The `NPM_TOKEN` repository secret must be configured with an npm automation token that has publish permissions for the `@fancyhq/hotpot` package.

@@ -273,7 +273,24 @@ async function main() {
   console.log(`hotpot binary installed successfully at ${binaryPath}`);
 }
 
-main().catch((err) => {
-  console.error(`Error: hotpot installation failed: ${err.message}`);
-  process.exit(1);
-});
+// Export pure helper functions for deterministic testing (no network I/O).
+// 导出纯辅助函数供确定性的测试使用（无网络 I/O）。
+module.exports = {
+  setExecutable,
+  getAssetLabel,
+  getAssetFilename,
+  getBinaryName,
+  getBinDir,
+  getDownloadUrl,
+  getArchiveExt,
+};
+
+// Guard main() so that requiring this module for tests does not
+// trigger network I/O.
+// 保护 main()，使得测试中 require 本模块不会触发网络 I/O。
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(`Error: hotpot installation failed: ${err.message}`);
+    process.exit(1);
+  });
+}

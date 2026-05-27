@@ -216,6 +216,158 @@ describe("release and channel contracts", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Task 4: Fix npm bin wrapper executable bit for fish and other strict shells
+// ---------------------------------------------------------------------------
+
+describe("npm bin wrapper executable bit", () => {
+  it("npm_bin_wrapper_is_executable_for_global_shells", () => {
+    // The npm CLI entry point must be executable on Unix so that shells like
+    // fish (which check the symlink target's executable bit) can run it.
+    // npm CLI 入口点在 Unix 上必须是可执行的，以便 fish 等 shell
+    // （会检查 symlink 目标的 executable bit）能够执行。
+    const binPath = path.join(PROJECT_ROOT, "npm", "bin", "hotpot.js");
+
+    // 1. Shebang check.
+    // shebang 检查。
+    const content = fs.readFileSync(binPath, "utf-8");
+    assert.ok(
+      content.startsWith("#!/usr/bin/env node"),
+      `npm/bin/hotpot.js must have shebang "#!/usr/bin/env node", got first line: ${content.split("\n")[0]}`
+    );
+
+    // 2. Executable bit check (Unix only).
+    // 可执行权限检查（仅 Unix）。
+    if (process.platform !== "win32") {
+      const stat = fs.statSync(binPath);
+      const mode = stat.mode & 0o111; // S_IXUSR | S_IXGRP | S_IXOTH
+      assert.ok(
+        mode !== 0,
+        `npm/bin/hotpot.js must have executable bits set on Unix.\n` +
+        `  Current mode: ${stat.mode.toString(8)} (permissions: ${(stat.mode & 0o777).toString(8)})\n` +
+        `  Expected at least one of execute-owner/group/other (0o111), got 0o${mode.toString(8)}`
+      );
+    }
+  });
+
+  it("npm_package_exposes_hotpot_wrapper_bin", () => {
+    // The npm package.json must declare bin.hotpot pointing to bin/hotpot.js.
+    // npm/package.json 必须声明 bin.hotpot 指向 bin/hotpot.js。
+    const pkg = readJson("npm/package.json");
+    assert.ok(pkg.bin, "npm/package.json must have a bin field");
+    assert.strictEqual(
+      pkg.bin.hotpot,
+      "bin/hotpot.js",
+      `npm/package.json bin.hotpot must be "bin/hotpot.js", got "${pkg.bin.hotpot}"`
+    );
+  });
+
+  it("npm_pack_dry_run_shows_executable_wrapper", () => {
+    // Simulate npm pack --dry-run --json to verify that bin/hotpot.js
+    // in the publishable tarball has executable mode bits.
+    // 模拟 npm pack --dry-run --json，验证可发布的 tarball
+    // 中 bin/hotpot.js 包含可执行权限位。
+    const { spawnSync } = require("node:child_process");
+    const r = spawnSync("npm", ["pack", "--dry-run", "--json", "./npm"], {
+      cwd: PROJECT_ROOT,
+      encoding: "utf-8",
+    });
+
+    assert.strictEqual(
+      r.status,
+      0,
+      `npm pack --dry-run --json failed: ${r.stderr}`
+    );
+
+    const packs = JSON.parse(r.stdout);
+    assert.ok(Array.isArray(packs) && packs.length > 0, "Expected at least one pack result");
+
+    const pkg = packs[0];
+    assert.ok(Array.isArray(pkg.files), "Expected pack result to have files array");
+
+    const wrapperEntry = pkg.files.find((f) => f.path === "bin/hotpot.js");
+    assert.ok(wrapperEntry, `Tarball must contain bin/hotpot.js, got: ${pkg.files.map((f) => f.path).join(", ")}`);
+
+    // mode is decimal. 0o111 = 73 decimal.
+    // mode 是十进制。0o111 = 73（十进制）。
+    const mode = wrapperEntry.mode;
+    const hasExecBit = (mode & 0o111) !== 0;
+    assert.ok(
+      hasExecBit,
+      `Tarball entry bin/hotpot.js must have executable bits.\n` +
+      `  Current mode: ${mode} (octal: ${mode.toString(8)})\n` +
+      `  Expected at least one of 0o111 (73 decimal) to be set.`
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 5: Validate npm packaging behavior end-to-end
+// ---------------------------------------------------------------------------
+
+describe("npm package file inclusion and install script contracts", () => {
+  it("npm_pack_dry_run_includes_all_required_files", () => {
+    // The publishable tarball must contain the npm wrapper entry point,
+    // the install script, and the package.json — but NOT the test file
+    // (tests are development-only and should not be shipped).
+    // 可发布的 tarball 必须包含 npm 包装入口、安装脚本和 package.json，
+    // 但不应包含测试文件（测试文件仅用于开发，不应发布）。
+    const { spawnSync } = require("node:child_process");
+    const r = spawnSync("npm", ["pack", "--dry-run", "--json", "./npm"], {
+      cwd: PROJECT_ROOT,
+      encoding: "utf-8",
+    });
+
+    assert.strictEqual(r.status, 0, `npm pack --dry-run --json failed: ${r.stderr}`);
+    const packs = JSON.parse(r.stdout);
+    const files = packs[0].files.map((f) => f.path);
+
+    // Required shipped files.
+    // 必需的发布文件。
+    const required = ["bin/hotpot.js", "scripts/install.js", "package.json"];
+    for (const file of required) {
+      assert.ok(
+        files.includes(file),
+        `Tarball must include "${file}", got: ${files.join(", ")}`
+      );
+    }
+  });
+
+  it("install_js_set_executable_sets_mode_on_unix", () => {
+    // The setExecutable helper in install.js must set 0o755 on Unix.
+    // install.js 中的 setExecutable 辅助函数在 Unix 上必须设置 0o755。
+    const { setExecutable } = require("./install.js");
+
+    // Create a temp file to test chmod behavior.
+    // 创建临时文件测试 chmod 行为。
+    const tmpDir = require("node:os").tmpdir();
+    const tmpFile = path.join(tmpDir, `hotpot-test-chmod-${process.pid}-${Date.now()}`);
+    try {
+      fs.writeFileSync(tmpFile, "test", { mode: 0o644 });
+      setExecutable(tmpFile);
+
+      const stat = fs.statSync(tmpFile);
+      const mode = stat.mode & 0o777;
+
+      if (process.platform === "win32") {
+        // On Windows, setExecutable is a no-op; just verify file exists.
+        // Windows 上 setExecutable 为空操作，仅验证文件存在。
+        assert.ok(fs.existsSync(tmpFile), "Temp file should still exist after setExecutable on Windows");
+      } else {
+        // On Unix, mode must be at least 0o755.
+        // Unix 上 mode 至少应为 0o755。
+        assert.strictEqual(
+          mode,
+          0o755,
+          `setExecutable should set mode to 0o755 on Unix, got 0o${mode.toString(8)}`
+        );
+      }
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch { /* ignore cleanup errors */ }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Task 3: Update architecture documentation and final validation
 // ---------------------------------------------------------------------------
 

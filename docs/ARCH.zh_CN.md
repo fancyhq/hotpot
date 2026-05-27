@@ -158,6 +158,16 @@ npm 包版本通过 `release-please` 与 Rust crate 版本保持同步。`releas
 
 手动重建 workflow `.github/workflows/rebuild-release-assets.yml` **不**发布 npm——它只重建已有 tag 的二进制资产并上传。
 
+### Wrapper 可执行权限契约
+
+npm CLI 入口 `npm/bin/hotpot.js` 在 Unix 上必须保持可执行权限，以便 fish 等 shell（会检查 symlink 目标的 executable bit）能正确执行安装后的 `hotpot` 命令。以下机制保证这一要求：
+
+- **源文件权限**：`npm/bin/hotpot.js` 以可执行权限提交到仓库（`chmod +x`，mode `0o755`）。Git 会追踪 mode 变更（`100644 → 100755`）。
+- **Tarball 验证**：`npm pack --dry-run --json ./npm` 会输出 tarball 中每个文件的 mode。`npm/scripts/install.test.js` 中的回归测试断言 `bin/hotpot.js` 条目的可执行位已设置（`mode & 0o111 !== 0`）。
+- **确定性（无网络）测试**：`node --test npm/scripts/install.test.js` 运行完整测试套件，包括可执行位检查、bin 映射验证、tarball 文件完整性以及 `setExecutable` 辅助函数测试，全程不执行任何网络 I/O。
+
+`npm/scripts/install.js` 中的 `setExecutable` 辅助函数（用于下载后的原生二进制）也已导出并通过 `node:test` 独立测试。任何移除 npm wrapper 可执行权限或原生二进制 chmod 调用的修改都会被 CI 拦截。
+
 ### 发布前提
 
 - 仓库必须配置 `NPM_TOKEN` secret，其值应为具有 `@fancyhq/hotpot` 包发布权限的 npm automation token。

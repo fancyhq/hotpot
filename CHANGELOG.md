@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/fancyhq/hotpot/compare/hotpot-v0.3.2...hotpot-v0.3.3) (2026-05-27)
+
+
+### Features
+
+* add crates and choco release ([c54a7b6](https://github.com/fancyhq/hotpot/commit/c54a7b646175e610eaf677a201cc884f0466bc35))
+
 ## [0.3.2](https://github.com/fancyhq/hotpot/compare/hotpot-v0.3.1...hotpot-v0.3.2) (2026-05-26)
 
 

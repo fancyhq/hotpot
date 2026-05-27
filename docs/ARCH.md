@@ -193,6 +193,18 @@ Where:
 
 When `TAG=hotpot-v0.3.2`, an example filename is `hotpot-hotpot-v0.3.2-windows-x86_64.zip`.
 
+### Package Naming and Release Contracts
+
+The crates.io package name `hotpot-ai` is separate from the release tag, asset naming, and the installed CLI command name. This separation is maintained by the following contracts:
+
+- **`release-please-config.json`** explicitly sets `component: "hotpot"` for the root package. This ensures release-please generates release tags in the format `hotpot-v<version>` rather than deriving `hotpot-ai-v<version>` from the Cargo package name.
+- **`Cargo.toml`** keeps an explicit `[[bin]] name = "hotpot"` target, so `cargo install hotpot-ai` installs the `hotpot` CLI command (not `hotpot-ai`).
+- **`npm/package.json`** exposes `"bin": { "hotpot": "bin/hotpot.js" }`, so `npm install -g @fancyhq/hotpot` makes the `hotpot` CLI command available on PATH.
+- **Release asset filenames** follow the pattern `hotpot-${TAG}-${ASSET_LABEL}${EXT}` (e.g., `hotpot-hotpot-v0.3.2-windows-x86_64.zip`). The tag in the asset name is the full GitHub Release tag (`hotpot-v<version>`), not the Cargo package name.
+- **Archive internal structure** always contains a single binary named `hotpot` (or `hotpot.exe` on Windows), never `hotpot-ai`.
+
+These contracts prevent the crates.io package name change from leaking into GitHub Release tags, download URLs, or the installed user-facing command. Any future changes to the distribution channels must preserve this separation.
+
 ### Release Workflow Job Graph
 
 ```

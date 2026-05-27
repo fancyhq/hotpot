@@ -2,6 +2,7 @@
   "packages": {
     ".": {
       "release-type": "rust",
+      "component": "hotpot",
       "extra-files": [
         "Cargo.lock",
         "npm/package.json",

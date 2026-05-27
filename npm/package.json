@@ -9,7 +9,8 @@
     "hotpot": "bin/hotpot.js"
   },
   "scripts": {
-    "postinstall": "node scripts/install.js"
+    "postinstall": "node scripts/install.js",
+    "test:install-names": "node --test scripts/install.test.js"
   },
   "files": [
     "bin/",

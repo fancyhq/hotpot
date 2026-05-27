@@ -192,6 +192,18 @@ hotpot-${TAG}-${ASSET_LABEL}${EXT}
 
 当 `TAG=hotpot-v0.3.2` 时，文件名示例为 `hotpot-hotpot-v0.3.2-windows-x86_64.zip`。
 
+### 包命名与发布契约
+
+crates.io 包名 `hotpot-ai` 与 release tag、资产命名以及安装后的 CLI 命令名是分离的。以下契约维护了这种分离：
+
+- **`release-please-config.json`** 显式设置了根 package 的 `component: "hotpot"`。这确保 release-please 生成的 release tag 格式为 `hotpot-v<version>`，而不会从 Cargo 包名派生为 `hotpot-ai-v<version>`。
+- **`Cargo.toml`** 保留显式的 `[[bin]] name = "hotpot"` 目标，因此 `cargo install hotpot-ai` 安装后的 CLI 命令为 `hotpot`（而非 `hotpot-ai`）。
+- **`npm/package.json`** 暴露 `"bin": { "hotpot": "bin/hotpot.js" }`，因此 `npm install -g @fancyhq/hotpot` 使得 PATH 上可用的 CLI 命令名为 `hotpot`。
+- **Release 资产文件名**遵循 `hotpot-${TAG}-${ASSET_LABEL}${EXT}` 格式（例如 `hotpot-hotpot-v0.3.2-windows-x86_64.zip`）。资产名中的 TAG 是完整的 GitHub Release tag（`hotpot-v<version>`），而非 Cargo 包名。
+- **压缩包内部结构**始终包含名为 `hotpot`（Windows 上为 `hotpot.exe`）的单一二进制文件，绝不会是 `hotpot-ai`。
+
+这些契约防止 crates.io 包名变更泄漏到 GitHub Release tag、下载 URL 或用户最终使用的命令名中。未来对分发渠道的任何更改都必须保持这种分离。
+
 ### 发布工作流 Job 依赖图
 
 ```

@@ -162,6 +162,7 @@ npm 包版本通过 `release-please` 与 Rust crate 版本保持同步。`releas
 
 - 仓库必须配置 `NPM_TOKEN` secret，其值应为具有 `@fancyhq/hotpot` 包发布权限的 npm automation token。
 - npm 安装需要网络能访问 GitHub Releases。离线环境或 GitHub 被阻断时安装将失败。
+- 如果你的 npm 配置了自定义或内部 registry 镜像，`@fancyhq/hotpot` 包可能无法在该 registry 中找到。可使用 `--registry https://registry.npmjs.org` 进行单次安装，或使用 `npm config set @fancyhq:registry https://registry.npmjs.org/` 设置持久化的 scope 级别覆盖。
 
 ## 多渠道分发
 

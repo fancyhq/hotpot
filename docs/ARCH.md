@@ -163,6 +163,7 @@ The `.github/workflows/rebuild-release-assets.yml` manual workflow does NOT publ
 
 - The `NPM_TOKEN` repository secret must be configured with an npm automation token that has publish permissions for the `@fancyhq/hotpot` package.
 - npm installation requires network access to GitHub Releases. Offline environments or networks where GitHub is blocked will fail.
+- If your npm is configured with a custom or internal registry mirror, the `@fancyhq/hotpot` package may not be available there. Use `--registry https://registry.npmjs.org` for one-off installs, or `npm config set @fancyhq:registry https://registry.npmjs.org/` for a persistent scope-level override.
 
 ## Multi-Channel Distribution
 

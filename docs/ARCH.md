@@ -164,6 +164,104 @@ The `.github/workflows/rebuild-release-assets.yml` manual workflow does NOT publ
 - The `NPM_TOKEN` repository secret must be configured with an npm automation token that has publish permissions for the `@fancyhq/hotpot` package.
 - npm installation requires network access to GitHub Releases. Offline environments or networks where GitHub is blocked will fail.
 
+## Multi-Channel Distribution
+
+Hotpot is distributed through multiple package channels. This section covers the release workflow for each channel, version synchronization, and required prerequisites.
+
+### Channel Overview
+
+| Channel | Type | Automatic Publish | Secret Required | Status |
+|---------|------|-------------------|-----------------|--------|
+| GitHub Release (binary assets) | Direct download | Yes (assets built + uploaded) | `GITHUB_TOKEN` (built-in) | ✅ Production |
+| npm (`@fancyhq/hotpot`) | npm registry | Yes (workflow `publish-npm` job) | `NPM_TOKEN` | ✅ Production |
+| crates.io (`hotpot`) | Rust crate registry | Yes (workflow `publish-crates-io` job) | `CARGO_REGISTRY_TOKEN` | ✅ New |
+| Chocolatey (`hotpot`) | Chocolatey Community Repository | Yes (workflow `publish-chocolatey` job) | `CHOCO_API_KEY` | ✅ New |
+
+### Asset Naming Convention
+
+All binary archives follow the naming pattern:
+
+```
+hotpot-${TAG}-${ASSET_LABEL}${EXT}
+```
+
+Where:
+- `${TAG}` is the full GitHub Release tag (e.g., `hotpot-v0.3.2`)
+- `${ASSET_LABEL}` identifies the platform (e.g., `windows-x86_64`, `macos-aarch64`, `linux-x86_64`)
+- `${EXT}` is `.tar.gz` for Linux/macOS or `.zip` for Windows
+
+When `TAG=hotpot-v0.3.2`, an example filename is `hotpot-hotpot-v0.3.2-windows-x86_64.zip`.
+
+### Release Workflow Job Graph
+
+```
+release-please
+  ├── build-release-assets (matrix: 5 platforms)
+  │     ├── publish-npm (after build)
+  │     └── publish-chocolatey (after build)
+  └── publish-crates-io (independent, only needs tag)
+```
+
+All jobs are gated by `needs.release-please.outputs.release_created == 'true'`, so they only run when a new release is created (not on ordinary `main` pushes).
+
+### crates.io Channel
+
+The `publish-crates-io` job in `.github/workflows/release-please.yml`:
+1. Checks out the release tag.
+2. Validates crate packaging via `cargo package --locked --no-verify`.
+3. Publishes to crates.io via `cargo publish --locked --token "$CARGO_REGISTRY_TOKEN"`.
+
+**Prerequisites:**
+- `CARGO_REGISTRY_TOKEN` repository secret configured with a crates.io API token.
+- Cargo metadata (`description`, `readme`, `keywords`, `categories`) must be present in `Cargo.toml`.
+- The package is published under the name `hotpot`.
+
+### Chocolatey Channel
+
+The `publish-chocolatey` job in `.github/workflows/release-please.yml`:
+1. Checks out the release tag (the `hotpot.nuspec` version was already updated by `release-please` via `extra-files`).
+2. Downloads the Windows x86_64 `.sha256` file from the GitHub Release.
+3. Runs `scripts/update-release-package-manifests.sh` to inject the release version and Windows checksum into the Chocolatey package files.
+4. Builds the Chocolatey package with `choco pack`.
+5. Pushes to Chocolatey Community Repository with `choco push --api-key`.
+
+The Chocolatey installation script (`packaging/chocolatey/tools/chocolateyInstall.ps1`) downloads the Windows x86_64 release zip from GitHub Releases, verifies the SHA256 checksum, and installs `hotpot.exe`.
+
+**Prerequisites:**
+- `CHOCO_API_KEY` repository secret configured with a Chocolatey API key.
+- The job runs on `windows-latest` (Chocolatey is pre-installed).
+
+The Chocolatey update script (`scripts/update-release-package-manifests.sh`):
+- Accepts a release tag and a directory of `.sha256` files.
+- Extracts the Windows x86_64 SHA256 hash.
+- Updates `packaging/chocolatey/hotpot.nuspec` and `packaging/chocolatey/tools/chocolateyInstall.ps1`.
+- Handles version stripping (converts `hotpot-v0.3.2` → `0.3.2`).
+- Output is deterministic: running the same inputs produces identical outputs.
+
+### Version Synchronization
+
+Versions across all channels are synchronized through `release-please`:
+- The `release-please-config.json` `extra-files` array lists files that `release-please` updates during Release PR generation:
+  - `Cargo.lock` (Rust lockfile)
+  - `npm/package.json` (npm package version)
+  - `packaging/chocolatey/hotpot.nuspec` (Chocolatey package version)
+
+Checksums are only known after build; therefore, the Chocolatey install script checksum is updated by the release workflow after binary assets are built, not by `release-please`.
+
+### Deferred Channels: Homebrew, Scoop, winget
+
+The current implementation does NOT maintain or publish Homebrew, Scoop, or winget manifests. These channels are deferred because repository-local manifests do not provide the direct install experience users expect from commands such as `brew install hotpot`, `scoop install hotpot`, or `winget install fancyhq.hotpot`.
+
+Future work should add one of the real distribution paths for each channel, such as a Homebrew tap or Homebrew Core PR, a Scoop bucket entry, and a `microsoft/winget-pkgs` submission workflow.
+
+### Manual Rebuild Workflow
+
+The `.github/workflows/rebuild-release-assets.yml` workflow only rebuilds and uploads binary assets for an existing tag. It does NOT:
+- Publish to npm, crates.io, or Chocolatey.
+- Rebuild Chocolatey package metadata.
+
+For package publishing, use the full `release-please.yml` workflow.
+
 ## Design Principles
 
 - **The task file is the contract.** New abstractions should map onto sections already in the task file rather than creating sidecar files.

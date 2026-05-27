@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Chocolatey package metadata for hotpot.
+  Chocolatey 包元数据。
+
+  Maintained in this repository; version is updated by release-please
+  via extra-files configuration and by the manifest generation script.
+  版本由 release-please（通过 extra-files）和清单生成脚本共同更新。
+-->
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>hotpot</id>
+    <version>0.3.2</version>
+    <title>Hotpot</title>
+    <authors>fancyhq</authors>
+    <owners>fancyhq</owners>
+    <projectUrl>https://github.com/fancyhq/hotpot</projectUrl>
+    <licenseUrl>https://github.com/fancyhq/hotpot/blob/main/LICENSE</licenseUrl>
+    <iconUrl>https://raw.githubusercontent.com/fancyhq/hotpot/main/docs/icon.png</iconUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Hotpot AI Agent — a CLI tool that helps you complete tasks through natural language conversations.</description>
+    <summary>AI agent CLI tool for natural language task completion</summary>
+    <tags>hotpot ai agent cli</tags>
+    <packageSourceUrl>https://github.com/fancyhq/hotpot</packageSourceUrl>
+    <releaseNotes>https://github.com/fancyhq/hotpot/releases</releaseNotes>
+  </metadata>
+</package>

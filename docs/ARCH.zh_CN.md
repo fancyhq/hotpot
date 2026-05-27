@@ -163,6 +163,104 @@ npm 包版本通过 `release-please` 与 Rust crate 版本保持同步。`releas
 - 仓库必须配置 `NPM_TOKEN` secret，其值应为具有 `@fancyhq/hotpot` 包发布权限的 npm automation token。
 - npm 安装需要网络能访问 GitHub Releases。离线环境或 GitHub 被阻断时安装将失败。
 
+## 多渠道分发
+
+Hotpot 通过多个包管理器渠道分发。本节涵盖每个渠道的发布流程、版本同步和前置条件。
+
+### 渠道概览
+
+| 渠道 | 类型 | 自动发布 | 所需 Secret | 状态 |
+|------|------|----------|-------------|------|
+| GitHub Release（二进制资产） | 直接下载 | 是（资产构建并上传） | `GITHUB_TOKEN`（内置） | ✅ 生产 |
+| npm（`@fancyhq/hotpot`） | npm registry | 是（workflow `publish-npm` job） | `NPM_TOKEN` | ✅ 生产 |
+| crates.io（`hotpot`） | Rust crate registry | 是（workflow `publish-crates-io` job） | `CARGO_REGISTRY_TOKEN` | ✅ 新增 |
+| Chocolatey（`hotpot`） | Chocolatey Community Repository | 是（workflow `publish-chocolatey` job） | `CHOCO_API_KEY` | ✅ 新增 |
+
+### 资产命名规则
+
+所有二进制压缩包遵循以下命名格式：
+
+```
+hotpot-${TAG}-${ASSET_LABEL}${EXT}
+```
+
+其中：
+- `${TAG}` 是完整的 GitHub Release tag（例如 `hotpot-v0.3.2`）
+- `${ASSET_LABEL}` 标识平台（例如 `windows-x86_64`、`macos-aarch64`、`linux-x86_64`）
+- `${EXT}` Linux/macOS 为 `.tar.gz`，Windows 为 `.zip`
+
+当 `TAG=hotpot-v0.3.2` 时，文件名示例为 `hotpot-hotpot-v0.3.2-windows-x86_64.zip`。
+
+### 发布工作流 Job 依赖图
+
+```
+release-please
+  ├── build-release-assets（5 平台矩阵构建）
+  │     ├── publish-npm（构建完成后）
+  │     └── publish-chocolatey（构建完成后）
+  └── publish-crates-io（独立，仅需 tag）
+```
+
+所有 job 都受 `needs.release-please.outputs.release_created == 'true'` 门控，因此仅在新 release 创建时运行（普通 `main` push 不会触发）。
+
+### crates.io 渠道
+
+`publish-crates-io` job（位于 `.github/workflows/release-please.yml`）：
+1. 检出 release tag。
+2. 通过 `cargo package --locked --no-verify` 验证包。
+3. 通过 `cargo publish --locked --token "$CARGO_REGISTRY_TOKEN"` 发布到 crates.io。
+
+**前置条件：**
+- `CARGO_REGISTRY_TOKEN` 仓库 secret 配置了 crates.io API token。
+- `Cargo.toml` 必须包含 `description`、`readme`、`keywords`、`categories` 等元数据。
+- 包名称为 `hotpot`。
+
+### Chocolatey 渠道
+
+`publish-chocolatey` job（位于 `.github/workflows/release-please.yml`）：
+1. 检出 release tag（`hotpot.nuspec` 的版本已由 `release-please` 通过 `extra-files` 更新）。
+2. 从 GitHub Release 下载 Windows x86_64 `.sha256` 文件。
+3. 运行 `scripts/update-release-package-manifests.sh`，将 release 版本和 Windows 校验和注入 Chocolatey 包文件。
+4. 通过 `choco pack` 构建 Chocolatey 包。
+5. 通过 `choco push --api-key` 推送到 Chocolatey Community Repository。
+
+Chocolatey 安装脚本（`packaging/chocolatey/tools/chocolateyInstall.ps1`）从 GitHub Releases 下载 Windows x86_64 release zip，验证 SHA256 校验和，并安装 `hotpot.exe`。
+
+**前置条件：**
+- `CHOCO_API_KEY` 仓库 secret 配置了 Chocolatey API key。
+- job 运行在 `windows-latest` 上（Chocolatey 已预装）。
+
+Chocolatey 更新脚本（`scripts/update-release-package-manifests.sh`）：
+- 接收 release tag 和 `.sha256` 文件目录作为参数。
+- 提取 Windows x86_64 SHA256 哈希值。
+- 更新 `packaging/chocolatey/hotpot.nuspec` 和 `packaging/chocolatey/tools/chocolateyInstall.ps1`。
+- 处理版本号剥离（将 `hotpot-v0.3.2` → `0.3.2`）。
+- 输出是确定性的：相同输入产生相同输出。
+
+### 版本同步
+
+所有渠道的版本通过 `release-please` 同步：
+- `release-please-config.json` 的 `extra-files` 数组列出了 `release-please` 在 Release PR 生成期间更新的文件：
+  - `Cargo.lock`（Rust lockfile）
+  - `npm/package.json`（npm 包版本）
+  - `packaging/chocolatey/hotpot.nuspec`（Chocolatey 包版本）
+
+校验和仅在构建后可知；因此，Chocolatey 安装脚本的校验和由 release workflow 在二进制资产构建后更新，不由 `release-please` 更新。
+
+### 延后渠道：Homebrew、Scoop、winget
+
+当前实现**不**维护或发布 Homebrew、Scoop、winget manifests。这些渠道已延后，因为仓库内本地 manifest 不能提供用户预期的直接安装体验，例如 `brew install hotpot`、`scoop install hotpot` 或 `winget install fancyhq.hotpot`。
+
+后续工作应为每个渠道增加真正的分发路径，例如 Homebrew tap 或 Homebrew Core PR、Scoop bucket 条目，以及 `microsoft/winget-pkgs` 提交流程。
+
+### 手动重建 workflow
+
+`.github/workflows/rebuild-release-assets.yml` workflow 仅重建并上传已有 tag 的二进制资产。它**不**：
+- 发布到 npm、crates.io 或 Chocolatey。
+- 重建 Chocolatey 包元数据。
+
+如需发布包，请使用完整的 `release-please.yml` workflow。
+
 ## 设计原则
 
 - **任务文件即契约**：新增的抽象优先映射到任务文件已有章节，不要另起 sidecar 文件。

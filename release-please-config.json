@@ -4,7 +4,8 @@
       "release-type": "rust",
       "extra-files": [
         "Cargo.lock",
-        "npm/package.json"
+        "npm/package.json",
+        "packaging/chocolatey/hotpot.nuspec"
       ]
     }
   }

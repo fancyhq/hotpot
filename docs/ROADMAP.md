@@ -39,6 +39,11 @@
 - [ ] **feat**: 完善更新功能
 - [ ] **feat**: 增加卸载项目文件配置功能
 - [x] **feat**: 增加 GitHub Release 跨平台二进制自动构建与上传（Windows、macOS x86_64/aarch64、Linux x86_64/aarch64 + SHA256 校验）
-- [ ] **feat**: 增加 `npm` 、`bun` 、`cargo` 、`brew` 、`choco` `scoop` 等安装机制（crates.io / Homebrew / Scoop / Chocolatey 需后续单独评估）
+- [x] **feat**: 增加 npm 自动发布（`@fancyhq/hotpot`）
+- [x] **feat**: 增加 crates.io 自动发布（`cargo install hotpot`）
+- [x] **feat**: 增加 Chocolatey 自动发布（`choco install hotpot`）
+- [ ] **feat**: 增加可直接安装的 Homebrew 发布渠道
+- [ ] **feat**: 增加可直接安装的 Scoop 发布渠道
+- [ ] **feat**: 增加可直接安装的 winget 发布渠道
 - [x] **feat**: 增加 `github action` 机制，使用 `release-please` 完善发布流程，注意不能每次合并都创建新版本发布
 - [ ] **feat**: 安装的提示都使用英文

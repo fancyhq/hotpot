@@ -3,8 +3,12 @@ name = "hotpot"
 version = "0.3.2"
 edition = "2024"
 license = "MIT"
-authors = []
+authors = ["fancyhq"]
 repository = "https://github.com/fancyhq/hotpot"
+description = "Evolvable Agent Specification Framework — cross-platform task orchestrator for coding agents"
+readme = "README.md"
+keywords = ["agent", "ai", "task-orchestrator", "claude-code", "opencode"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 anyhow = "1.0.102"

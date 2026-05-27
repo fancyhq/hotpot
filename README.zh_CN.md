@@ -108,6 +108,28 @@ npm install -g @fancyhq/hotpot
 
 > **注意：** npm 安装需要网络能够访问 GitHub Releases。如果你的网络无法访问 GitHub，安装将会失败。此时你可以直接从 [Releases](https://github.com/fancyhq/hotpot/releases) 页面下载二进制文件。
 
+### 通过 crates.io 安装
+
+如果你已安装 Rust 工具链，可以通过 crates.io 安装 hotpot：
+
+```bash
+cargo install hotpot
+```
+
+这会从源码编译 hotpot。需要 Rust 工具链。
+
+### 通过 Chocolatey 安装
+
+Hotpot 已发布到 Chocolatey，支持 Windows 平台：
+
+```bash
+choco install hotpot
+```
+
+Chocolatey 包会在每次 release 时自动发布到 Chocolatey Community Repository。
+
+> **注意：** Chocolatey 包审核可能需要一些时间。如果包尚未可用，请稍后再试或使用直接下载方式。
+
 ### 发布版本
 
 本项目使用 `release-please` 自动维护版本发布流程，基于 [Conventional Commits](https://www.conventionalcommits.org/) 规范。
@@ -116,13 +138,18 @@ npm install -g @fancyhq/hotpot
 
 1. 日常开发：向 `main` 分支提交遵循 Conventional Commits 规范的 PR（如 `feat:`、`fix:` 前缀）。
 2. 自动聚合：每次 push 到 `main` 后，GitHub Actions 会自动创建或更新一个 **Release PR**，汇总所有新的 conventional commits。
-3. 人工发布：当需要正式发布时，维护者手动合并 Release PR。合并后 `release-please` 会自动创建 Git tag 和 GitHub Release，并更新 `CHANGELOG.md` 和版本文件。`npm/package.json` 的版本也会随 Rust crate 版本同步更新。
+3. 人工发布：当需要正式发布时，维护者手动合并 Release PR。合并后 `release-please` 会自动创建 Git tag 和 GitHub Release，并更新 `CHANGELOG.md` 和版本文件。`npm/package.json` 和 `packaging/chocolatey/hotpot.nuspec` 的版本也会随 Rust crate 版本同步更新。
 4. 自动构建：Release 创建后，GitHub Actions 自动为 Windows、macOS（x86_64 + aarch64）和 Linux（x86_64 + aarch64）编译 release 二进制，将压缩包和 SHA256 校验文件上传到对应的 GitHub Release。
-5. 自动 npm 发布：二进制资产构建上传完成后，GitHub Actions 自动将 npm wrapper 包发布到 npm registry，版本与 Release 一致。这需要仓库配置 `NPM_TOKEN` secret。
+5. 自动 npm 发布：二进制资产构建上传完成后，GitHub Actions 自动将 npm wrapper 包发布到 npm registry。需要 `NPM_TOKEN` secret。
+6. 自动 crates.io 发布：Release 创建后，GitHub Actions 自动将 Rust crate 发布到 crates.io。需要 `CARGO_REGISTRY_TOKEN` secret。
+7. 自动 Chocolatey 发布：二进制资产构建完成后，GitHub Actions 自动注入 Windows x86_64 校验和，构建 Chocolatey 包并发布到 Chocolatey Community Repository。需要 `CHOCO_API_KEY` secret。
 
 > 普通功能分支合并到 `main` 不会立即创建 tag 或 GitHub Release，确保你可以累积多个功能后再统一发布。
 >
-> 二进制 release assets 仅在合并 Release PR 后自动构建上传，crates.io / Homebrew / Scoop / Chocolatey 等包管理器发布需要单独评估，不在当前发布流程覆盖范围内。
+> 每个发布渠道需要自己的仓库 secret：
+> - `NPM_TOKEN` — npm automation token
+> - `CARGO_REGISTRY_TOKEN` — crates.io API token
+> - `CHOCO_API_KEY` — Chocolatey API key
 
 ## 关于 vuepress
 

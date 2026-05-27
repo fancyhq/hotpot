@@ -9,7 +9,8 @@
 #   the actual version release (tag + GitHub Release + changelog update).
 # - When a release is created, this workflow also builds and uploads
 #   release binaries for Windows, macOS (x86_64 + aarch64), and Linux
-#   (x86_64 + aarch64), along with SHA256 checksum files.
+#   (x86_64 + aarch64), along with SHA256 checksum files, and publishes
+#   to npm, crates.io, and Chocolatey.
 # - Version selection is controlled by release-please. To force a specific
 #   next release version, merge a conventional commit that includes a
 #   `Release-As: x.y.z` footer.
@@ -20,12 +21,14 @@
 #   只有维护者人工合并 Release PR 后，release-please 才创建 tag、
 #   GitHub Release 并更新 changelog。
 # - 当 release 创建后，此 workflow 还会为 Windows、macOS（x86_64 + aarch64）
-#   和 Linux（x86_64 + aarch64）编译 release 二进制，上传压缩包和 SHA256 校验文件。
+#   和 Linux（x86_64 + aarch64）编译 release 二进制，上传压缩包和 SHA256 校验文件，
+#   并发布到 npm、crates.io 和 Chocolatey。
 # - 版本号由 release-please 控制。若要强制指定下一次发布版本，合入一条包含
 #   `Release-As: x.y.z` footer 的 conventional commit。
 #
 # See: https://github.com/googleapis/release-please-action
 # See: https://github.com/googleapis/release-please
+# See: https://doc.rust-lang.org/cargo/commands/cargo-publish.html
 
 name: Release Please
 
@@ -43,6 +46,10 @@ permissions:
   pull-requests: write
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # release-please: Create or update Release PR; on merge, create tag+release.
+  # release-please：创建或更新 Release PR；合并后创建 tag+release。
+  # ---------------------------------------------------------------------------
   release-please:
     runs-on: ubuntu-latest
     outputs:
@@ -58,10 +65,12 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+  # ---------------------------------------------------------------------------
   # Build and upload release binary assets for all target platforms.
   # Only runs when release-please actually created a GitHub Release/tag.
   # 编译并上传所有目标平台的 release 二进制产物。
   # 仅在 release-please 实际创建了 GitHub Release/tag 时运行。
+  # ---------------------------------------------------------------------------
   build-release-assets:
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
@@ -194,10 +203,118 @@ jobs:
           TAG="${{ needs.release-please.outputs.tag_name }}"
           gh release upload "${TAG}" "${ARCHIVE}" "${ARCHIVE}.sha256" --clobber
 
+  # ---------------------------------------------------------------------------
+  # Publish the Rust crate to crates.io.
+  # Requires the CARGO_REGISTRY_TOKEN repository secret.
+  # 将 Rust crate 发布到 crates.io。
+  # 需要设置 CARGO_REGISTRY_TOKEN 仓库 secret。
+  # ---------------------------------------------------------------------------
+  publish-crates-io:
+    needs:
+      - release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # Checkout the exact release tag so Cargo.toml has the correct version.
+        # 检出精确 release tag，确保 Cargo.toml 版本正确。
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # Dry-run first to catch packaging issues before publishing.
+      # 先 dry-run，在正式发布前发现打包问题。
+      - name: Validate crate packaging
+        run: cargo package --locked --no-verify
+
+      # Publish to crates.io.
+      # If CARGO_REGISTRY_TOKEN is missing, cargo will fail with an auth error,
+      # preventing a silent skip of the release.
+      # 发布到 crates.io。
+      # 如果缺少 CARGO_REGISTRY_TOKEN，cargo 将因认证错误而失败，
+      # 避免正式 release 静默跳过发布。
+      - name: Publish to crates.io
+        run: cargo publish --locked --token "${{ secrets.CARGO_REGISTRY_TOKEN }}"
+
+  # ---------------------------------------------------------------------------
+  # Build and publish the Chocolatey package.
+  # Requires the CHOCO_API_KEY repository secret.
+  # Downloads SHA256 checksums from the release and runs the manifest
+  # update script to inject the correct version and checksum into
+  # hotpot.nuspec and chocolateyInstall.ps1 before packing.
+  # 构建并发布 Chocolatey 包。
+  # 需要设置 CHOCO_API_KEY 仓库 secret。
+  # 从 release 下载 SHA256 校验文件并运行清单更新脚本，
+  # 在打包前将正确的版本和校验和注入到 hotpot.nuspec 和
+  # chocolateyInstall.ps1 中。
+  # ---------------------------------------------------------------------------
+  publish-chocolatey:
+    needs:
+      - release-please
+      - build-release-assets
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        # Checkout the exact release tag so the nuspec has the correct version.
+        # 检出精确 release tag，确保 nuspec 版本正确。
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      # Download SHA256 checksum files and run the Chocolatey update script
+      # so that chocolateyInstall.ps1 has the correct $version and
+      # $checksum64 before choco pack runs.
+      # 下载 SHA256 校验文件并运行 Chocolatey 更新脚本，
+      # 确保 choco pack 执行前 chocolateyInstall.ps1
+      # 具有正确的 $version 和 $checksum64。
+      - name: Download SHA256 checksum files from release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="${{ needs.release-please.outputs.tag_name }}"
+          mkdir -p sha256
+          gh release download "${TAG}" --pattern "*.sha256" --dir sha256
+          echo "Downloaded SHA256 files:"
+          ls -la sha256/
+
+      - name: Update Chocolatey package files
+        shell: bash
+        run: |
+          TAG="${{ needs.release-please.outputs.tag_name }}"
+          scripts/update-release-package-manifests.sh "${TAG}" sha256
+
+      - name: Install Chocolatey
+        shell: pwsh
+        run: |
+          # Chocolatey is pre-installed on windows-latest; ensure it's available.
+          # Chocolatey 在 windows-latest 上已预装；确保它可用。
+          choco --version
+
+      - name: Build Chocolatey package
+        shell: pwsh
+        run: |
+          choco pack packaging/chocolatey/hotpot.nuspec --output-directory packaging/chocolatey/
+
+      - name: Push Chocolatey package
+        shell: pwsh
+        run: |
+          # Derive semver version from the tag (strip "hotpot-v" prefix).
+          # 从 tag 中提取 semver 版本（去掉 "hotpot-v" 前缀）。
+          $tag = "${{ needs.release-please.outputs.tag_name }}"
+          $version = $tag -replace '^hotpot-v', ''
+          choco push "packaging/chocolatey/hotpot.$version.nupkg" `
+            --api-key "${{ secrets.CHOCO_API_KEY }}" `
+            --source https://push.chocolatey.org/
+
+  # ---------------------------------------------------------------------------
   # Publish the npm wrapper package to the npm registry.
   # Requires the NPM_TOKEN repository secret to be set.
   # 将 npm wrapper 包发布到 npm registry。
   # 需要设置 NPM_TOKEN 仓库 secret。
+  # ---------------------------------------------------------------------------
   publish-npm:
     needs:
       - release-please

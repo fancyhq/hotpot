@@ -108,6 +108,26 @@ After installation, the `hotpot` CLI command is available on your PATH.
 
 > **Note:** The npm installation requires network access to GitHub Releases. If GitHub is not accessible from your network, the installation will fail. In that case, you can download the binary directly from the [Releases](https://github.com/fancyhq/hotpot/releases) page.
 
+### Installation via crates.io
+
+If you have Rust installed, you can install hotpot from crates.io:
+
+```bash
+cargo install hotpot
+```
+
+This compiles hotpot from source. Requires the Rust toolchain.
+
+### Installation via Chocolatey
+
+Hotpot is published to Chocolatey for Windows. A Chocolatey package (`hotpot`) is automatically published to the Chocolatey Community Repository during each release:
+
+```bash
+choco install hotpot
+```
+
+> **Note:** Chocolatey package moderation can take some time after publication. If the package is not yet available, please check back later or use the direct download option.
+
 ### Release Versions
 
 This project uses `release-please` to automatically maintain the version release process, based on the [Conventional Commits](https://www.conventionalcommits.org/) specification.
@@ -116,13 +136,18 @@ This project uses `release-please` to automatically maintain the version release
 
 1. Daily development: submit PRs to the `main` branch that follow Conventional Commits, such as the `feat:` and `fix:` prefixes.
 2. Automatic aggregation: after each push to `main`, GitHub Actions automatically creates or updates a **Release PR** that summarizes all new conventional commits.
-3. Manual release: when an official release is needed, maintainers manually merge the Release PR. After it is merged, `release-please` automatically creates the Git tag and GitHub Release, and updates `CHANGELOG.md` and version files. The version in `npm/package.json` is also updated automatically alongside the Rust crate version.
+3. Manual release: when an official release is needed, maintainers manually merge the Release PR. After it is merged, `release-please` automatically creates the Git tag and GitHub Release, and updates `CHANGELOG.md` and version files. The version in `npm/package.json` and `packaging/chocolatey/hotpot.nuspec` is also updated automatically alongside the Rust crate version.
 4. Automatic build: after the Release is created, GitHub Actions automatically compiles release binaries for Windows, macOS (x86_64 + aarch64), and Linux (x86_64 + aarch64), then uploads archives and SHA256 checksum files to the corresponding GitHub Release.
 5. Automatic npm publish: after the binary assets are built and uploaded, GitHub Actions automatically publishes the npm wrapper package to the npm registry with the matching version. This requires the `NPM_TOKEN` repository secret to be configured.
+6. Automatic crates.io publish: after the Release is created, GitHub Actions automatically publishes the Rust crate to crates.io. This requires the `CARGO_REGISTRY_TOKEN` repository secret to be configured.
+7. Automatic Chocolatey publish: after the binary assets are built, GitHub Actions automatically injects the Windows x86_64 checksum, builds the Chocolatey package, and publishes it to the Chocolatey Community Repository. This requires the `CHOCO_API_KEY` repository secret to be configured.
 
 > Merging regular feature branches into `main` does not immediately create a tag or GitHub Release, so multiple features can be accumulated and released together later.
 >
-> Binary release assets are built and uploaded automatically only after the Release PR is merged. Publishing to package managers such as crates.io, Homebrew, Scoop, and Chocolatey requires separate evaluation and is not covered by the current release process.
+> Each publish channel requires its own repository secret:
+> - `NPM_TOKEN` — npm automation token
+> - `CARGO_REGISTRY_TOKEN` — crates.io API token
+> - `CHOCO_API_KEY` — Chocolatey API key
 
 ## About VuePress
 

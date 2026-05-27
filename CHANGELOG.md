@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.5](https://github.com/fancyhq/hotpot/compare/hotpot-v0.3.4...hotpot-v0.3.5) (2026-05-27)
+
+
+### Bug Fixes
+
+* keep npm wrapper executable ([8e75f15](https://github.com/fancyhq/hotpot/commit/8e75f157108ad8e51911e55e88ddd9d091ef74da))
+
 ## [0.3.4](https://github.com/fancyhq/hotpot/compare/hotpot-v0.3.4...hotpot-v0.3.4) (2026-05-27)
 
 

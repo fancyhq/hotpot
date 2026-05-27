@@ -11,7 +11,7 @@ tag: [npm, registry, install]
 ::: info Overview
 | Status | TDD | Tasks | Risk |
 | ------ | --- | ----- | ---- |
-| In Progress | false | 4 | medium |
+| Done | false | 4 | medium |
 :::
 
 ---

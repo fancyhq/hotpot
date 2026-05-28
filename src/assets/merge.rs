@@ -451,7 +451,7 @@ mod tests {
 
     const CODEX_HOTPOT: &str = "# Hotpot Codex project hooks.\n\n\
         [features]\n\
-        codex_hooks = true\n\n\
+        hooks = true\n\n\
         [[hooks.PreToolUse]]\n\
         matcher = \"Bash|shell|exec\"\n\n\
         [[hooks.PreToolUse.hooks]]\n\
@@ -473,7 +473,7 @@ mod tests {
         );
         assert!(out.contains("[model]"), "lost user [model] table: {out}");
         assert!(out.contains("default = \"gpt-5\""));
-        assert!(out.contains("codex_hooks = true"));
+        assert!(out.contains("hooks = true"));
         assert!(out.contains("hotpot hook codex pre-tool-use"));
         assert!(out.contains("hotpot hook codex session-start"));
     }
@@ -483,7 +483,7 @@ mod tests {
         let out = merge_toml(CODEX_HOTPOT, CODEX_HOTPOT, p()).unwrap();
         assert_eq!(out.matches("hotpot hook codex pre-tool-use").count(), 1);
         assert_eq!(out.matches("hotpot hook codex session-start").count(), 1);
-        assert_eq!(out.matches("codex_hooks = true").count(), 1);
+        assert_eq!(out.matches("hooks = true").count(), 1);
     }
 
     #[test]
@@ -495,7 +495,7 @@ mod tests {
             "lost user feature: {out}"
         );
         assert!(
-            out.contains("codex_hooks = true"),
+            out.contains("hooks = true"),
             "missing hotpot feature: {out}"
         );
     }

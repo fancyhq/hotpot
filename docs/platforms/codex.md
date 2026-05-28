@@ -133,13 +133,13 @@ Hotpot implication: the repository's `.codex/agents/hotpot-execution.toml` and `
 
 ## Hooks And Plugins
 
-Codex hooks are lifecycle hooks behind the `codex_hooks` feature flag.
+Codex hooks are lifecycle hooks behind the `hooks` feature flag.
 
 Enable hooks:
 
 ```toml
 [features]
-codex_hooks = true
+hooks = true
 ```
 
 Hook locations:
@@ -252,7 +252,7 @@ Relevant config areas:
 ```toml
 [features]
 multi_agent = true
-codex_hooks = true
+hooks = true
 shell_tool = true
 unified_exec = true
 apps = true

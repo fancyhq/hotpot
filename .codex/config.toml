@@ -1,7 +1,7 @@
 # Hotpot Codex project hooks.
 
 [features]
-codex_hooks = true
+hooks = true
 
 [[hooks.PreToolUse]]
 matcher = "Bash|shell|exec"

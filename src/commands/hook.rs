@@ -229,33 +229,39 @@ pub fn claude(command: ClaudeHookCommand) -> Result<()> {
 pub fn codex(command: CodexHookCommand) -> Result<()> {
     let payload = read_hook_payload()?;
     let context = Context::from_payload(&payload)?;
+    print_value(&build_codex_response(&command, &context))
+}
 
-    match command {
-        CodexHookCommand::PreToolUse => {
-            let message = codex_shell_context_message(&context);
-            print_value(&json!({
-                "systemMessage": message,
-                "hookSpecificOutput": {
-                    "permissionDecision": "allow",
-                    "additionalContext": message,
-                },
-            }))
-        }
-        CodexHookCommand::SessionStart => {
-            let message = review_memory_message(&context);
-            print_value(&json!({
-                "systemMessage": message,
-                "additionalContext": message,
-            }))
-        }
+/// Builds the Codex hook response JSON value for the given command and context.
+///
+/// Returns a `serde_json::Value` matching the Codex hook output schema.
+/// Used by both the public `codex()` function and tests.
+///
+/// 为指定 Codex hook 命令与上下文构建响应 JSON。
+/// 返回符合 Codex hook 输出 schema 的 `serde_json::Value`。
+fn build_codex_response(command: &CodexHookCommand, context: &Context) -> Value {
+    let (message, event_name) = match command {
+        CodexHookCommand::PreToolUse => (codex_shell_context_message(context), "PreToolUse"),
+        CodexHookCommand::SessionStart => (review_memory_message(context), "SessionStart"),
         CodexHookCommand::UserPromptSubmit => {
-            let message = language_directive_message(&context.language);
-            print_value(&json!({
-                "systemMessage": message,
-                "additionalContext": message,
-            }))
+            (language_directive_message(&context.language), "UserPromptSubmit")
         }
-    }
+    };
+    // Unified schema: systemMessage at top level, additionalContext inside
+    // hookSpecificOutput. Codex rejects top-level additionalContext and only
+    // accepts permissionDecision when denying (absence = allow). Each event
+    // must carry its matching hookEventName.
+    //
+    // 统一结构：systemMessage 在顶层，additionalContext 在 hookSpecificOutput
+    // 内部。Codex 拒绝顶层 additionalContext，且仅拒绝时才设 permissionDecision。
+    // 每个事件须携带对应的 hookEventName。
+    json!({
+        "systemMessage": message,
+        "hookSpecificOutput": {
+            "hookEventName": event_name,
+            "additionalContext": message,
+        },
+    })
 }
 
 /// Reads a platform hook payload from stdin.
@@ -507,4 +513,131 @@ fn shell_export_assignments(context: &Context) -> String {
 /// Escapes a string for safe single-quoted shell output.
 fn shell_quote(value: &str) -> String {
     value.replace('\'', "'\"'\"'")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+
+    /// Builds a minimal hook payload that can be consumed by
+    /// `Context::from_payload`, pointing at the real project root so
+    /// `build_context` can resolve language, prompts, etc.
+    ///
+    /// 构造一个能被 `Context::from_payload` 消费的最小 hook payload，
+    /// 指向当前项目根目录以便 `build_context` 正常解析。
+    fn test_payload() -> Value {
+        let cwd = env!("CARGO_MANIFEST_DIR");
+        json!({"cwd": cwd})
+    }
+
+    /// Helper: creates a test Context, calls `build_codex_response` for the
+    /// given command, and returns the JSON value.
+    ///
+    /// 创建测试 Context，为指定命令调用 `build_codex_response`，返回 JSON。
+    fn build_response(command: CodexHookCommand) -> Value {
+        let payload = test_payload();
+        let context = Context::from_payload(&payload).unwrap();
+        build_codex_response(&command, &context)
+    }
+
+    #[test]
+    fn codex_pre_tool_use_outputs_valid_hook_json() {
+        let value = build_response(CodexHookCommand::PreToolUse);
+        // Must have systemMessage at top level
+        assert!(
+            value.get("systemMessage").and_then(|v| v.as_str()).is_some(),
+            "PreToolUse: expected top-level systemMessage, got {:?}",
+            value,
+        );
+        // Must have hookSpecificOutput.additionalContext
+        let hso = value
+            .get("hookSpecificOutput")
+            .and_then(|v| v.as_object())
+            .unwrap_or_else(|| panic!("PreToolUse: expected hookSpecificOutput object, got {value:?}"));
+        assert!(
+            hso.get("additionalContext").and_then(|v| v.as_str()).is_some(),
+            "PreToolUse: expected hookSpecificOutput.additionalContext, got {:?}",
+            hso,
+        );
+        // Must NOT have permissionDecision (Codex only accepts "deny", absence = "allow")
+        assert!(
+            !hso.contains_key("permissionDecision"),
+            "PreToolUse: permissionDecision should not be present when allowing, got {:?}",
+            hso,
+        );
+        // Must have hookSpecificOutput.hookEventName matching the event
+        assert_eq!(
+            hso.get("hookEventName").and_then(|v| v.as_str()),
+            Some("PreToolUse"),
+            "PreToolUse: expected hookSpecificOutput.hookEventName = \"PreToolUse\", got {:?}",
+            hso.get("hookEventName"),
+        );
+    }
+
+    #[test]
+    fn codex_session_start_outputs_valid_hook_json() {
+        let value = build_response(CodexHookCommand::SessionStart);
+        // Must have systemMessage at top level
+        assert!(
+            value.get("systemMessage").and_then(|v| v.as_str()).is_some(),
+            "SessionStart: expected top-level systemMessage, got {:?}",
+            value,
+        );
+        // Must NOT have additionalContext at top level
+        assert!(
+            value.get("additionalContext").is_none(),
+            "SessionStart: additionalContext must NOT be at top level, got {:?}",
+            value,
+        );
+        // Must have hookSpecificOutput.additionalContext
+        let hso = value.get("hookSpecificOutput").and_then(|v| v.as_object()).unwrap_or_else(|| {
+            panic!("SessionStart: expected hookSpecificOutput object, got {value:?}")
+        });
+        assert!(
+            hso.get("additionalContext").and_then(|v| v.as_str()).is_some(),
+            "SessionStart: expected hookSpecificOutput.additionalContext, got {:?}",
+            hso,
+        );
+        // Must have hookSpecificOutput.hookEventName matching the event
+        assert_eq!(
+            hso.get("hookEventName").and_then(|v| v.as_str()),
+            Some("SessionStart"),
+            "SessionStart: expected hookSpecificOutput.hookEventName = \"SessionStart\", got {:?}",
+            hso.get("hookEventName"),
+        );
+    }
+
+    #[test]
+    fn codex_user_prompt_submit_outputs_valid_hook_json() {
+        let value = build_response(CodexHookCommand::UserPromptSubmit);
+        // Must have systemMessage at top level
+        assert!(
+            value.get("systemMessage").and_then(|v| v.as_str()).is_some(),
+            "UserPromptSubmit: expected top-level systemMessage, got {:?}",
+            value,
+        );
+        // Must NOT have additionalContext at top level
+        assert!(
+            value.get("additionalContext").is_none(),
+            "UserPromptSubmit: additionalContext must NOT be at top level, got {:?}",
+            value,
+        );
+        // Must have hookSpecificOutput.additionalContext
+        let hso = value.get("hookSpecificOutput").and_then(|v| v.as_object()).unwrap_or_else(|| {
+            panic!("UserPromptSubmit: expected hookSpecificOutput object, got {value:?}")
+        });
+        assert!(
+            hso.get("additionalContext").and_then(|v| v.as_str()).is_some(),
+            "UserPromptSubmit: expected hookSpecificOutput.additionalContext, got {:?}",
+            hso,
+        );
+        // Must have hookSpecificOutput.hookEventName matching the event
+        assert_eq!(
+            hso.get("hookEventName").and_then(|v| v.as_str()),
+            Some("UserPromptSubmit"),
+            "UserPromptSubmit: expected hookSpecificOutput.hookEventName = \"UserPromptSubmit\", got {:?}",
+            hso.get("hookEventName"),
+        );
+    }
 }

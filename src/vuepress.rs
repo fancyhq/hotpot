@@ -535,6 +535,8 @@ fn is_pid_alive(pid: u32) -> bool {
     {
         std::process::Command::new("kill")
             .args(["-0", &pid.to_string()])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .status()
             .map(|s| s.success())
             .unwrap_or(false)
@@ -558,6 +560,238 @@ fn is_pid_alive(pid: u32) -> bool {
     }
 }
 
+/// Process target selected by the VuePress cleanup planner.
+///
+/// VuePress 清理计划选中的进程目标。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CleanupTarget {
+    /// Terminate exactly one process id.
+    /// 只终止单个进程 id。
+    Pid(u32),
+    /// Terminate the Unix process group whose id is the runtime pid.
+    /// 终止 Unix 上以 runtime pid 为组号的进程组。
+    #[cfg(unix)]
+    ProcessGroup(u32),
+    /// Terminate a Windows process tree with `taskkill /T`.
+    /// 使用 Windows `taskkill /T` 终止进程树。
+    #[cfg(windows)]
+    ProcessTree(u32),
+}
+
+/// Returns the cleanup targets for a runtime pid.
+///
+/// 返回 runtime pid 对应的清理目标列表。
+fn cleanup_targets_for_runtime_pid(pid: u32) -> Vec<CleanupTarget> {
+    #[cfg(unix)]
+    {
+        vec![CleanupTarget::ProcessGroup(pid), CleanupTarget::Pid(pid)]
+    }
+
+    #[cfg(windows)]
+    {
+        vec![CleanupTarget::ProcessTree(pid)]
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        vec![CleanupTarget::Pid(pid)]
+    }
+}
+
+/// A process currently owning the runtime port.
+///
+/// 当前占用 runtime 端口的进程候选。
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PortOwner {
+    pid: u32,
+    command: String,
+}
+
+/// Filters port owners down to Hotpot VuePress-related processes.
+///
+/// 将端口占用进程收窄到 Hotpot VuePress 相关进程。
+fn hotpot_vuepress_port_cleanup_targets(hub_dir: &Path, owners: &[PortOwner]) -> Vec<u32> {
+    let hub = hub_dir.to_string_lossy();
+    owners
+        .iter()
+        .filter(|owner| {
+            let command = owner.command.to_ascii_lowercase();
+            owner.command.contains(hub.as_ref())
+                && (command.contains("vuepress")
+                    || command.contains("vite")
+                    || command.contains("pnpm")
+                    || command.contains("docs:dev"))
+        })
+        .map(|owner| owner.pid)
+        .collect()
+}
+
+/// Reads process ids listening on a TCP port.
+///
+/// 读取监听指定 TCP 端口的进程 id。
+fn list_port_owners(port: u16) -> Vec<PortOwner> {
+    #[cfg(unix)]
+    {
+        let output = std::process::Command::new("lsof")
+            .args(["-nP", "-sTCP:LISTEN", "-Fp", &format!("-iTCP:{port}")])
+            .output();
+        let Ok(output) = output else {
+            return Vec::new();
+        };
+        if !output.status.success() {
+            return Vec::new();
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        stdout
+            .lines()
+            .filter_map(|line| line.strip_prefix('p'))
+            .filter_map(|pid| pid.parse::<u32>().ok())
+            .map(|pid| PortOwner {
+                pid,
+                command: process_command_line(pid).unwrap_or_default(),
+            })
+            .collect()
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = port;
+        Vec::new()
+    }
+}
+
+/// Reads a process command line for conservative ownership checks.
+///
+/// 读取进程命令行，用于保守判断端口占用是否属于 Hotpot VuePress。
+fn process_command_line(pid: u32) -> Option<String> {
+    #[cfg(unix)]
+    {
+        let output = std::process::Command::new("ps")
+            .args(["-p", &pid.to_string(), "-o", "command="])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        None
+    }
+}
+
+/// Terminates one cleanup target with the requested force level.
+///
+/// 按指定强度终止一个清理目标。
+fn terminate_cleanup_target(target: &CleanupTarget, force: bool) -> Result<()> {
+    match target {
+        CleanupTarget::Pid(pid) => terminate_pid(*pid, force),
+        #[cfg(unix)]
+        CleanupTarget::ProcessGroup(pid) => terminate_unix_process_group(*pid, force),
+        #[cfg(windows)]
+        CleanupTarget::ProcessTree(pid) => terminate_windows_process_tree(*pid, force),
+    }
+}
+
+/// Terminates the Unix process group created by `setsid()`.
+///
+/// 终止由 `setsid()` 创建的 Unix 进程组。
+#[cfg(unix)]
+fn terminate_unix_process_group(pid: u32, force: bool) -> Result<()> {
+    let signal = if force { "-KILL" } else { "-TERM" };
+    let group = format!("-{pid}");
+    std::process::Command::new("kill")
+        .args([signal, &group])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .with_context(|| format!("failed to invoke `kill {signal} {group}`"))?;
+    Ok(())
+}
+
+/// Returns the Unix `kill` arguments for a cleanup target.
+///
+/// 返回 Unix 清理目标对应的 `kill` 参数，便于测试不会污染 stderr 的调用形态。
+#[cfg(all(unix, test))]
+fn unix_kill_args_for_cleanup_target(target: CleanupTarget, force: bool) -> Vec<String> {
+    let signal = if force { "-KILL" } else { "-TERM" }.to_string();
+    let target = match target {
+        CleanupTarget::Pid(pid) => pid.to_string(),
+        CleanupTarget::ProcessGroup(pid) => format!("-{pid}"),
+    };
+    vec![signal, target]
+}
+
+/// Terminates a Windows process tree with `taskkill /T`.
+///
+/// 使用 `taskkill /T` 终止 Windows 进程树。
+#[cfg(windows)]
+fn terminate_windows_process_tree(pid: u32, force: bool) -> Result<()> {
+    let mut cmd = std::process::Command::new("taskkill");
+    cmd.args(["/PID", &pid.to_string(), "/T"]);
+    if force {
+        cmd.arg("/F");
+    }
+    cmd.status()
+        .with_context(|| format!("failed to invoke `taskkill /PID {pid} /T`"))?;
+    Ok(())
+}
+
+/// Runs the shared TERM -> wait -> KILL cleanup sequence.
+///
+/// 执行共享的 TERM -> 等待 -> KILL 清理流程。
+fn cleanup_runtime_process(root_dir: &str, state: &RuntimeState, print_stopped: bool) {
+    let targets = cleanup_targets_for_runtime_pid(state.pid);
+    if is_pid_alive(state.pid) {
+        for target in &targets {
+            let _ = terminate_cleanup_target(target, false);
+        }
+
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline && is_pid_alive(state.pid) {
+            thread::sleep(Duration::from_millis(200));
+        }
+
+        if is_pid_alive(state.pid) {
+            for target in &targets {
+                let _ = terminate_cleanup_target(target, true);
+            }
+        }
+    }
+
+    cleanup_runtime_port(root_dir, state.port);
+    discard_runtime_state(root_dir);
+
+    if print_stopped {
+        println!(
+            "Stopped vuepress (pid {}, was running on port {}).",
+            state.pid, state.port
+        );
+    }
+}
+
+/// Best-effort cleanup for VuePress-like processes still owning the runtime port.
+///
+/// 对仍占用 runtime 端口的 VuePress 类进程做尽力清理。
+fn cleanup_runtime_port(root_dir: &str, port: u16) {
+    let hub_dir = hotpot_hub_dir(root_dir);
+    let owners = list_port_owners(port);
+    for pid in hotpot_vuepress_port_cleanup_targets(&hub_dir, &owners) {
+        let _ = terminate_pid(pid, false);
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while Instant::now() < deadline && is_pid_alive(pid) {
+            thread::sleep(Duration::from_millis(100));
+        }
+        if is_pid_alive(pid) {
+            let _ = terminate_pid(pid, true);
+        }
+    }
+}
+
 /// Terminates a process cross-platform.
 ///
 /// `force=false` 走 graceful（Unix SIGTERM / Windows taskkill 不带 /F）；
@@ -569,6 +803,8 @@ fn terminate_pid(pid: u32, force: bool) -> Result<()> {
         let signal = if force { "-KILL" } else { "-TERM" };
         std::process::Command::new("kill")
             .args([signal, &pid.to_string()])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .status()
             .with_context(|| format!("failed to invoke `kill {signal} {pid}`"))?;
     }
@@ -854,32 +1090,7 @@ pub fn stop(root_dir: &str, if_running: bool) -> Result<()> {
         bail!("vuepress is not running (no runtime.json found)");
     };
 
-    if !is_pid_alive(state.pid) {
-        // stale runtime — silently clean up regardless of flag.
-        // stale 状态静默清理，无论 if_running 与否都不算错。
-        discard_runtime_state(root_dir);
-        return Ok(());
-    }
-
-    // graceful TERM
-    let _ = terminate_pid(state.pid, false);
-
-    // poll up to 3 seconds for the pid to disappear
-    let deadline = Instant::now() + Duration::from_secs(3);
-    while Instant::now() < deadline && is_pid_alive(state.pid) {
-        thread::sleep(Duration::from_millis(200));
-    }
-
-    // forceful KILL if still hanging
-    if is_pid_alive(state.pid) {
-        let _ = terminate_pid(state.pid, true);
-    }
-
-    discard_runtime_state(root_dir);
-    println!(
-        "Stopped vuepress (pid {}, was running on port {}).",
-        state.pid, state.port
-    );
+    cleanup_runtime_process(root_dir, &state, true);
     Ok(())
 }
 
@@ -900,15 +1111,11 @@ pub fn status(root_dir: &str) -> Result<()> {
             None => false,
         };
 
-        if !alive {
-            // Dead pid: clear runtime state.
-            // pid 已死：清状态。
-            discard_runtime_state(root_dir);
-        } else if expired {
-            // Expired ttl: kill and clear runtime state.
-            // ttl 过期：杀掉并清状态。
-            let _ = terminate_pid(state.pid, false);
-            discard_runtime_state(root_dir);
+        if !alive || expired {
+            // Dead pid or expired ttl: reuse stop cleanup, including
+            // process-group/tree and runtime-port fallback.
+            // pid 已死或 ttl 过期：复用 stop 清理，包括进程组/进程树和端口兜底。
+            cleanup_runtime_process(root_dir, &state, false);
         } else {
             output.insert("running".into(), serde_json::Value::Bool(true));
             output.insert("port".into(), serde_json::Value::from(state.port));
@@ -931,6 +1138,158 @@ pub fn status(root_dir: &str) -> Result<()> {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn vuepress_new_prompt_requires_prewrite_style_gate() -> anyhow::Result<()> {
+        let prompt = read_repo_text("assets/prompts/hotpot-new.md")?;
+        let section = prompt
+            .split("## Optional: VuePress Integration")
+            .nth(1)
+            .context("missing Optional: VuePress Integration section")?;
+
+        assert!(
+            section.contains("BEFORE creating the task file"),
+            "VuePress integration must require the gate before creating the task file"
+        );
+        assert!(
+            section.contains("vuepress-style.md"),
+            "VuePress integration must require reading vuepress-style.md"
+        );
+        assert!(
+            section.contains("BEFORE Step 7"),
+            "VuePress integration must place the style gate before the task-file write step"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn codex_new_skill_forbids_two_phase_vuepress_task_write() -> anyhow::Result<()> {
+        let skill = read_repo_text(".codex/skills/hotpot-new/SKILL.md")?;
+
+        assert!(
+            skill.contains("Do NOT create a plain Markdown task file first"),
+            "Codex skill must forbid plain-Markdown-first task creation"
+        );
+        assert!(
+            skill.contains("*** Add File"),
+            "Codex skill must require apply_patch Add File for the final task file"
+        );
+        assert!(
+            skill.contains("vuepress-style.md"),
+            "Codex skill must mention the VuePress style prompt"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn stop_uses_process_group_on_unix_when_runtime_pid_is_alive() {
+        let targets = cleanup_targets_for_runtime_pid(4242);
+
+        #[cfg(unix)]
+        assert_eq!(
+            targets,
+            vec![CleanupTarget::ProcessGroup(4242), CleanupTarget::Pid(4242)],
+            "Unix cleanup must target the setsid-created process group before the fallback pid"
+        );
+
+        #[cfg(windows)]
+        assert_eq!(
+            targets,
+            vec![CleanupTarget::ProcessTree(4242)],
+            "Windows cleanup must preserve taskkill process-tree semantics"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn unix_cleanup_target_kill_args_encode_process_group() {
+        assert_eq!(
+            unix_kill_args_for_cleanup_target(CleanupTarget::ProcessGroup(4242), false),
+            vec!["-TERM".to_string(), "-4242".to_string()],
+            "Unix process-group cleanup must use a negative pid target"
+        );
+        assert_eq!(
+            unix_kill_args_for_cleanup_target(CleanupTarget::Pid(4242), true),
+            vec!["-KILL".to_string(), "4242".to_string()],
+            "Unix pid fallback must remain available after process-group cleanup"
+        );
+    }
+
+    #[test]
+    fn stop_if_running_cleans_runtime_when_pid_dead_but_port_has_vuepress_owner() {
+        let hub_dir = Path::new("/repo/.hotpot-hub");
+        let owners = vec![
+            PortOwner {
+                pid: 10,
+                command: "python -m http.server 8080".to_string(),
+            },
+            PortOwner {
+                pid: 11,
+                command: "/repo/.hotpot-hub/node_modules/.bin/vuepress dev docs --port 8080"
+                    .to_string(),
+            },
+            PortOwner {
+                pid: 12,
+                command: "pnpm docs:dev --port 8080".to_string(),
+            },
+        ];
+
+        assert_eq!(
+            hotpot_vuepress_port_cleanup_targets(hub_dir, &owners),
+            vec![11],
+            "port fallback must only include identifiable Hotpot VuePress owners under the hub"
+        );
+    }
+
+    #[test]
+    fn status_expired_ttl_reuses_stop_cleanup() {
+        let targets = cleanup_targets_for_runtime_pid(31337);
+
+        #[cfg(unix)]
+        assert!(
+            targets.contains(&CleanupTarget::ProcessGroup(31337)),
+            "TTL cleanup must reuse process-group cleanup, not single-pid termination"
+        );
+
+        #[cfg(windows)]
+        assert!(
+            targets.contains(&CleanupTarget::ProcessTree(31337)),
+            "TTL cleanup must reuse process-tree cleanup, not single-pid termination"
+        );
+    }
+
+    #[test]
+    fn arch_documents_vuepress_prewrite_gate_and_process_cleanup() -> anyhow::Result<()> {
+        let english = read_repo_text("docs/ARCH.md")?;
+        let chinese = read_repo_text("docs/ARCH.zh_CN.md")?;
+
+        assert!(
+            english.contains("before writing the task file"),
+            "ARCH.md must describe the VuePress style gate before writing the task file"
+        );
+        assert!(
+            english.contains("process group")
+                && english.contains("process tree")
+                && english.contains("runtime port fallback")
+                && english.contains("TTL"),
+            "ARCH.md must describe pid, process-group/tree, TTL, and port cleanup defenses"
+        );
+        assert!(
+            chinese.contains("写任务文件前"),
+            "ARCH.zh_CN.md must describe the VuePress style gate before writing the task file"
+        );
+        assert!(
+            chinese.contains("进程组")
+                && chinese.contains("进程树")
+                && chinese.contains("runtime 端口兜底")
+                && chinese.contains("TTL"),
+            "ARCH.zh_CN.md must describe pid, process-group/tree, TTL, and port cleanup defenses"
+        );
+
+        Ok(())
+    }
 
     #[test]
     fn test_sync_tasks_links() -> anyhow::Result<()> {
@@ -989,5 +1348,13 @@ mod tests {
             .tempdir()?;
         fs::create_dir_all(root.path())?;
         Ok(root)
+    }
+
+    /// Reads a repository file relative to `CARGO_MANIFEST_DIR`.
+    ///
+    /// 按 `CARGO_MANIFEST_DIR` 读取仓库内文件，供文本资产断言测试复用。
+    fn read_repo_text(relative: &str) -> anyhow::Result<String> {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))
     }
 }

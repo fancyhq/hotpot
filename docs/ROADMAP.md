@@ -41,7 +41,6 @@
 - [x] **feat**: 增加 GitHub Release 跨平台二进制自动构建与上传（Windows、macOS x86_64/aarch64、Linux x86_64/aarch64 + SHA256 校验）
 - [x] **feat**: 增加 npm 自动发布（`@fancyhq/hotpot`）
 - [x] **feat**: 增加 crates.io 自动发布（`cargo install hotpot-ai`，二进制命令仍为 `hotpot`）
-- [x] **feat**: 增加 Chocolatey 自动发布（`choco install hotpot`）
 - [ ] **feat**: 增加可直接安装的 Homebrew 发布渠道
 - [ ] **feat**: 增加可直接安装的 Scoop 发布渠道
 - [ ] **feat**: 增加可直接安装的 winget 发布渠道

@@ -1,15 +1,13 @@
 # Rebuild release assets for an existing hotpot tag.
 # This workflow manually rebuilds and uploads binary assets for an
 # existing release tag. It does NOT publish to any package manager
-# (npm, crates.io, Chocolatey) — those publish steps happen
+# (npm or crates.io) — those publish steps happen
 # automatically only in the `release-please.yml` workflow when a new
-# release is created. Chocolatey package metadata is not rebuilt here
-# because this workflow only refreshes binary release assets.
+# release is created.
 # 为已有 hotpot tag 重新构建 release 资产。
 # 此 workflow 手动为已有 release tag 重建并上传二进制资产。
-# 它不发布任何包管理器（npm、crates.io、Chocolatey）——那些发布步骤
+# 它不发布任何包管理器（npm 或 crates.io）——那些发布步骤
 # 仅在 `release-please.yml` workflow 创建新 release 时自动执行。
-# 它也不重建 Chocolatey 包元数据，因为此 workflow 只刷新二进制 release 资产。
 
 name: Rebuild Release Assets
 

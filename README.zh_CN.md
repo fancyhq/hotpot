@@ -62,18 +62,6 @@ cargo install hotpot-ai
 
 这会从源码编译 hotpot。安装后的 CLI 命令仍然是 `hotpot`。需要 Rust 工具链。
 
-### 通过 Chocolatey 安装
-
-Hotpot 已发布到 Chocolatey，支持 Windows 平台：
-
-```bash
-choco install hotpot
-```
-
-Chocolatey 包会在每次 release 时自动发布到 Chocolatey Community Repository。
-
-> **注意：** Chocolatey 包审核可能需要一些时间。如果包尚未可用，请稍后再试或使用直接下载方式。
-
 ## 🖌️使用
 
 ### 项目初始化

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.6](https://github.com/fancyhq/hotpot/compare/hotpot-v0.3.5...hotpot-v0.3.6) (2026-05-28)
+
+
+### Bug Fixes
+
+* update Codex hook schema ([37651a9](https://github.com/fancyhq/hotpot/commit/37651a92eead126949cdc8daa73f909e51df5409))
+* update codex hooks ([ad6f166](https://github.com/fancyhq/hotpot/commit/ad6f166664020dad05439dc9f0b4d44b19e39796))
+
 ## [0.3.5](https://github.com/fancyhq/hotpot/compare/hotpot-v0.3.4...hotpot-v0.3.5) (2026-05-27)
 
 

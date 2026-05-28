@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.7](https://github.com/fancyhq/hotpot/compare/hotpot-v0.3.6...hotpot-v0.3.7) (2026-05-28)
+
+
+### Bug Fixes
+
+* harden codex vuepress flow ([05ed6f2](https://github.com/fancyhq/hotpot/commit/05ed6f2175ed922fc8f62e972c1ba0cfa32dd3c3))
+
 ## [0.3.6](https://github.com/fancyhq/hotpot/compare/hotpot-v0.3.5...hotpot-v0.3.6) (2026-05-28)
 
 

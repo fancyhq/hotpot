@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "Evolvable Agent Specification Framework - CLI tool for orchestrating AI coding agents",
   "bin": {
     "hotpot": "bin/hotpot.js"

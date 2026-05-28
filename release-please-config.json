@@ -5,8 +5,7 @@
       "component": "hotpot",
       "extra-files": [
         "Cargo.lock",
-        "npm/package.json",
-        "packaging/chocolatey/hotpot.nuspec"
+        "npm/package.json"
       ]
     }
   }

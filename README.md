@@ -62,16 +62,6 @@ cargo install hotpot-ai
 
 This compiles hotpot from source. The installed CLI command is still `hotpot`. Requires the Rust toolchain.
 
-### Installation via Chocolatey
-
-Hotpot is published to Chocolatey for Windows. A Chocolatey package (`hotpot`) is automatically published to the Chocolatey Community Repository during each release:
-
-```bash
-choco install hotpot
-```
-
-> **Note:** Chocolatey package moderation can take some time after publication. If the package is not yet available, please check back later or use the direct download option.
-
 ## 🖌️ Usage
 
 ### Project Initialization

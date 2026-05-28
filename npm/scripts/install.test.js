@@ -1,6 +1,6 @@
 // Test suite for Hotpot install naming contracts.
 // Verifies release-please configuration, asset filenames, and binary names
-// across all distribution channels (npm, crates.io, Chocolatey, GitHub Releases).
+// across all distribution channels (npm, crates.io, GitHub Releases).
 // 用于验证 Hotpot 安装命名契约的测试套件。
 // 验证 release-please 配置、资产文件名以及所有分发渠道的二进制名。
 
@@ -80,7 +80,6 @@ describe("release-please configuration", () => {
     const expectedFiles = [
       "Cargo.lock",
       "npm/package.json",
-      "packaging/chocolatey/hotpot.nuspec",
     ];
 
     for (const f of expectedFiles) {
@@ -130,24 +129,6 @@ describe("release and channel contracts", () => {
       ".github/workflows/rebuild-release-assets.yml",
       /hotpot\$\{\{ matrix\.suffix \}\}/,
       "rebuild-release-assets.yml must use hotpot executable name in binary variable"
-    );
-
-    // --- chocolateyInstall.ps1 ---
-    const chocoInstall = readFile("packaging/chocolatey/tools/chocolateyInstall.ps1");
-    // Assert download URL uses hotpot-$tag-windows-x86_64.zip.
-    // 断言 Chocolatey 下载 URL 使用 hotpot-$tag-windows-x86_64.zip 格式。
-    assert.ok(
-      /hotpot-\$tag-windows/.test(chocoInstall),
-      `chocolateyInstall.ps1 must download hotpot-$tag-windows-x86_64.zip`
-    );
-
-    // --- update-release-package-manifests.sh ---
-    const manifestScript = readFile("scripts/update-release-package-manifests.sh");
-    // Assert checksum path uses hotpot-${tag}-windows-x86_64.zip.sha256.
-    // 断言 checksum 路径使用 hotpot-${tag}-windows-x86_64.zip.sha256 格式。
-    assert.ok(
-      /hotpot-\$\{tag\}-windows/.test(manifestScript),
-      `update-release-package-manifests.sh must reference hotpot-\${tag}-windows-x86_64.zip.sha256`
     );
 
     // --- Cargo.toml ---

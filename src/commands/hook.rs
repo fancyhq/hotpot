@@ -208,7 +208,7 @@ pub fn claude(command: ClaudeHookCommand) -> Result<()> {
             &context,
             "Hotpot shell context was resolved from the Claude Code hook payload cwd.",
         ),
-        ClaudeHookCommand::SubagentStart => review_memory_message(&context),
+        ClaudeHookCommand::SubagentStart => claude_review_memory_message(&context),
         ClaudeHookCommand::UserPromptSubmit => language_directive_message(&context.language),
         ClaudeHookCommand::SessionEnd => unreachable!("handled in early return above"),
     };
@@ -223,6 +223,28 @@ pub fn claude(command: ClaudeHookCommand) -> Result<()> {
     }))
 }
 
+/// Builds the review-memory bootstrap message for subagent/session hooks.
+///
+/// Subagent/session boundaries are where the orchestrator's once-only
+/// language detection most often gets dropped, so the bootstrap message
+/// carries both the literal `HOTPOT_LANGUAGE` value (for grep / shell
+/// reuse) and a one-line directive (for direct steering).
+fn claude_review_memory_message(context: &Context) -> String {
+    [
+        "Hotpot review-memory context is ready.".to_string(),
+        format!("- ROOT_DIR: {}", context.root_dir),
+        format!("- HOTPOT_USERNAME: {}", context.username),
+        format!("- HOTPOT_LANGUAGE: {}", context.language),
+        format!(
+            "- HOTPOT_ISSUE_CANDIDATES_FILE: {}",
+            context.issue_candidates_file
+        ),
+        "Record only validated, reusable repair memories in this JSONL file.".to_string(),
+        language_directive_message(&context.language),
+    ]
+    .join("\n")
+}
+
 /// Executes a Codex hook event command.
 ///
 /// 同 `claude`，走 payload-first 入口。
@@ -230,6 +252,31 @@ pub fn codex(command: CodexHookCommand) -> Result<()> {
     let payload = read_hook_payload()?;
     let context = Context::from_payload(&payload)?;
     print_value(&build_codex_response(&command, &context))
+}
+
+fn codex_review_memory_message(context: &Context) -> String {
+    [
+        "Hotpot review-memory context is ready.".to_string(),
+        format!("- ROOT_DIR: {}", context.root_dir),
+        format!("- HOTPOT_USERNAME: {}", context.username),
+        format!("- HOTPOT_LANGUAGE: {}", context.language),
+        format!(
+            "- HOTPOT_RECORD_ISSUE_CANDIDATE_PROMPT: {}",
+            context.record_issue_candidate_prompt
+        ),
+        format!(
+            "- HOTPOT_ISSUE_CANDIDATES_FILE: {}",
+            context.issue_candidates_file
+        ),
+        format!(
+            "- HOTPOT_TDD_PROTOCOL_PROMPT: {}",
+            context.tdd_protocol_prompt
+        ),
+        format!("- HOTPOT_NEW_PROMPT: {}", context.new_prompt),
+        "Record only validated, reusable repair memories in this JSONL file.".to_string(),
+        language_directive_message(&context.language),
+    ]
+    .join("\n")
 }
 
 /// Builds the Codex hook response JSON value for the given command and context.
@@ -242,10 +289,12 @@ pub fn codex(command: CodexHookCommand) -> Result<()> {
 fn build_codex_response(command: &CodexHookCommand, context: &Context) -> Value {
     let (message, event_name) = match command {
         CodexHookCommand::PreToolUse => (codex_shell_context_message(context), "PreToolUse"),
-        CodexHookCommand::SessionStart => (review_memory_message(context), "SessionStart"),
-        CodexHookCommand::UserPromptSubmit => {
-            (language_directive_message(&context.language), "UserPromptSubmit")
-        }
+        // CodexHookCommand::SessionStart => (review_memory_message(context), "SessionStart"),
+        CodexHookCommand::SessionStart => (codex_review_memory_message(context), "SessionStart"),
+        CodexHookCommand::UserPromptSubmit => (
+            language_directive_message(&context.language),
+            "UserPromptSubmit",
+        ),
     };
     // Unified schema: systemMessage at top level, additionalContext inside
     // hookSpecificOutput. Codex rejects top-level additionalContext and only
@@ -409,28 +458,6 @@ fn language_directive_message(language: &str) -> String {
     )
 }
 
-/// Builds the review-memory bootstrap message for subagent/session hooks.
-///
-/// Subagent/session boundaries are where the orchestrator's once-only
-/// language detection most often gets dropped, so the bootstrap message
-/// carries both the literal `HOTPOT_LANGUAGE` value (for grep / shell
-/// reuse) and a one-line directive (for direct steering).
-fn review_memory_message(context: &Context) -> String {
-    [
-        "Hotpot review-memory context is ready.".to_string(),
-        format!("- ROOT_DIR: {}", context.root_dir),
-        format!("- HOTPOT_USERNAME: {}", context.username),
-        format!("- HOTPOT_LANGUAGE: {}", context.language),
-        format!(
-            "- HOTPOT_ISSUE_CANDIDATES_FILE: {}",
-            context.issue_candidates_file
-        ),
-        "Record only validated, reusable repair memories in this JSONL file.".to_string(),
-        language_directive_message(&context.language),
-    ]
-    .join("\n")
-}
-
 /// Returns all Hotpot context values formatted for human-readable hook output.
 fn context_lines(context: &Context) -> Vec<String> {
     let mut lines = vec![
@@ -546,7 +573,10 @@ mod tests {
         let value = build_response(CodexHookCommand::PreToolUse);
         // Must have systemMessage at top level
         assert!(
-            value.get("systemMessage").and_then(|v| v.as_str()).is_some(),
+            value
+                .get("systemMessage")
+                .and_then(|v| v.as_str())
+                .is_some(),
             "PreToolUse: expected top-level systemMessage, got {:?}",
             value,
         );
@@ -554,9 +584,13 @@ mod tests {
         let hso = value
             .get("hookSpecificOutput")
             .and_then(|v| v.as_object())
-            .unwrap_or_else(|| panic!("PreToolUse: expected hookSpecificOutput object, got {value:?}"));
+            .unwrap_or_else(|| {
+                panic!("PreToolUse: expected hookSpecificOutput object, got {value:?}")
+            });
         assert!(
-            hso.get("additionalContext").and_then(|v| v.as_str()).is_some(),
+            hso.get("additionalContext")
+                .and_then(|v| v.as_str())
+                .is_some(),
             "PreToolUse: expected hookSpecificOutput.additionalContext, got {:?}",
             hso,
         );
@@ -580,7 +614,10 @@ mod tests {
         let value = build_response(CodexHookCommand::SessionStart);
         // Must have systemMessage at top level
         assert!(
-            value.get("systemMessage").and_then(|v| v.as_str()).is_some(),
+            value
+                .get("systemMessage")
+                .and_then(|v| v.as_str())
+                .is_some(),
             "SessionStart: expected top-level systemMessage, got {:?}",
             value,
         );
@@ -591,11 +628,16 @@ mod tests {
             value,
         );
         // Must have hookSpecificOutput.additionalContext
-        let hso = value.get("hookSpecificOutput").and_then(|v| v.as_object()).unwrap_or_else(|| {
-            panic!("SessionStart: expected hookSpecificOutput object, got {value:?}")
-        });
+        let hso = value
+            .get("hookSpecificOutput")
+            .and_then(|v| v.as_object())
+            .unwrap_or_else(|| {
+                panic!("SessionStart: expected hookSpecificOutput object, got {value:?}")
+            });
         assert!(
-            hso.get("additionalContext").and_then(|v| v.as_str()).is_some(),
+            hso.get("additionalContext")
+                .and_then(|v| v.as_str())
+                .is_some(),
             "SessionStart: expected hookSpecificOutput.additionalContext, got {:?}",
             hso,
         );
@@ -613,7 +655,10 @@ mod tests {
         let value = build_response(CodexHookCommand::UserPromptSubmit);
         // Must have systemMessage at top level
         assert!(
-            value.get("systemMessage").and_then(|v| v.as_str()).is_some(),
+            value
+                .get("systemMessage")
+                .and_then(|v| v.as_str())
+                .is_some(),
             "UserPromptSubmit: expected top-level systemMessage, got {:?}",
             value,
         );
@@ -624,11 +669,16 @@ mod tests {
             value,
         );
         // Must have hookSpecificOutput.additionalContext
-        let hso = value.get("hookSpecificOutput").and_then(|v| v.as_object()).unwrap_or_else(|| {
-            panic!("UserPromptSubmit: expected hookSpecificOutput object, got {value:?}")
-        });
+        let hso = value
+            .get("hookSpecificOutput")
+            .and_then(|v| v.as_object())
+            .unwrap_or_else(|| {
+                panic!("UserPromptSubmit: expected hookSpecificOutput object, got {value:?}")
+            });
         assert!(
-            hso.get("additionalContext").and_then(|v| v.as_str()).is_some(),
+            hso.get("additionalContext")
+                .and_then(|v| v.as_str())
+                .is_some(),
             "UserPromptSubmit: expected hookSpecificOutput.additionalContext, got {:?}",
             hso,
         );

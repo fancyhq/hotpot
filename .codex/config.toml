@@ -3,8 +3,11 @@
 [features]
 hooks = true
 
+# [[hooks.PreToolUse]]
+# matcher = "Bash|shell|exec"
+
 [[hooks.PreToolUse]]
-matcher = "Bash|shell|exec"
+matcher = "Edit|Write"
 
 [[hooks.PreToolUse.hooks]]
 type = "command"

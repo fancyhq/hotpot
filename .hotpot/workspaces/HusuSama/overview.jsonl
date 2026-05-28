@@ -25,4 +25,4 @@
 {"time":"2026-05-27","task_id":"Y_fIpYcf8l","title":"fix-npm-registry-install","commit":"c37ec0b0cf0c26e4e0c4bd7876abe97865e88b5c","status":"Done","active":false}
 {"time":"2026-05-27","task_id":"3UQmnDvM-O","title":"verify-hotpot-ai-install-names","commit":"5da61c9f3851de47bf9297d6d29c6258466d71bd","status":"Done","active":false}
 {"time":"2026-05-27","task_id":"R-NsDSDtgQ","title":"fix-npm-bin-executable-bit","commit":"8e75f157108ad8e51911e55e88ddd9d091ef74da","status":"Done","active":false}
-{"time":"2026-05-28","task_id":"AS0_-HyFfB","title":"fix-codex-hooks-config","commit":null,"status":"In Progress","active":true}
+{"time":"2026-05-28","task_id":"AS0_-HyFfB","title":"fix-codex-hooks-config","commit":"37651a92eead126949cdc8daa73f909e51df5409","status":"Done","active":false}

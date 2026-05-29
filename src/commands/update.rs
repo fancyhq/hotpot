@@ -147,7 +147,58 @@ pub struct UpdateReport {
     /// 本轮 update 刷新的 VuePress opt-in prompt 文件名（相对 `.hotpot/prompts/`）。
     /// 仅在 `vuepress_enabled = true` 时可能非空。
     vuepress_prompts_updated: Vec<String>,
+    /// Force-sensitive asset strategy matrix for files touched or deliberately
+    /// skipped by `hotpot update`.
+    ///
+    /// `hotpot update` 触达或刻意跳过的资产策略矩阵，说明 `--force` 边界。
+    asset_strategy: UpdateAssetStrategy,
     warnings: Vec<Warning>,
+}
+
+/// Strategy matrix rendered in `hotpot update --json`.
+///
+/// `hotpot update --json` 输出中的资产策略矩阵。
+#[derive(Debug, Serialize)]
+pub struct UpdateAssetStrategy {
+    /// Hotpot-private files refreshed by update.
+    ///
+    /// update 刷新的 Hotpot 私有文件。
+    owned: AssetStrategySummary,
+    /// Merge-strategy files refreshed by update.
+    ///
+    /// update 刷新的合并策略文件。
+    merge: AssetStrategySummary,
+    /// User-owned seed files acknowledged by update.
+    ///
+    /// update 识别但不覆盖的用户自有 seed 文件。
+    create_if_missing: AssetStrategySummary,
+    /// VuePress hub project boundary.
+    ///
+    /// VuePress hub 项目的 update 边界。
+    vuepress_hub: AssetStrategySummary,
+}
+
+/// Human- and machine-readable description of one asset strategy.
+///
+/// 单类资产策略的人类可读与机器可读描述。
+#[derive(Debug, Serialize)]
+pub struct AssetStrategySummary {
+    /// Representative project-relative paths or path groups.
+    ///
+    /// 代表性的项目相对路径或路径分组。
+    paths: Vec<&'static str>,
+    /// What `hotpot update` does with this strategy.
+    ///
+    /// `hotpot update` 对该策略执行的动作。
+    update_behavior: &'static str,
+    /// What `--force` changes for this strategy.
+    ///
+    /// `--force` 对该策略的影响。
+    force_behavior: &'static str,
+    /// Whether `hotpot update --force` overwrites existing files in this class.
+    ///
+    /// `hotpot update --force` 是否会覆盖此类已存在文件。
+    force_overwrites_existing: bool,
 }
 
 /// Entry point: parse args, run refresh, run self-check, render report.
@@ -225,7 +276,12 @@ pub(crate) fn build_report(args: UpdateArgs) -> Result<UpdateReport> {
     let mut refreshed: Vec<String> = Vec::new();
     for platform in &platforms {
         let stats = assets::install_for(&project_dir, *platform, force, dry_run, verbose_per_asset)
-            .with_context(|| format!("failed to refresh platform {}", platform.slug()))?;
+            .with_context(|| {
+                format!(
+                    "failed to refresh platform {}; rerun with --force to overwrite differing Hotpot-private files",
+                    platform.slug()
+                )
+            })?;
         refreshed.push(platform.slug().to_string());
         combined.extend(stats);
     }
@@ -373,8 +429,60 @@ pub(crate) fn build_report(args: UpdateArgs) -> Result<UpdateReport> {
         prompts_updated,
         vuepress_enabled,
         vuepress_prompts_updated,
+        asset_strategy: update_asset_strategy(vuepress_enabled),
         warnings,
     })
+}
+
+/// Builds the force-sensitive strategy matrix for `hotpot update`.
+///
+/// 构造 `hotpot update` 的 `--force` 敏感策略矩阵。
+fn update_asset_strategy(vuepress_enabled: bool) -> UpdateAssetStrategy {
+    let owned_paths = if vuepress_enabled {
+        vec![
+            ".hotpot/prompts/*.md",
+            ".claude/.opencode/.codex/.pi Hotpot-private assets",
+            ".hotpot/prompts/vuepress*.md",
+        ]
+    } else {
+        vec![
+            ".hotpot/prompts/*.md",
+            ".claude/.opencode/.codex/.pi Hotpot-private assets",
+        ]
+    };
+
+    UpdateAssetStrategy {
+        owned: AssetStrategySummary {
+            paths: owned_paths,
+            update_behavior: "refreshes Hotpot-private templates; differing files abort unless --force is set",
+            force_behavior: "--force overwrites differing Owned files with bundled Hotpot templates",
+            force_overwrites_existing: true,
+        },
+        merge: AssetStrategySummary {
+            paths: vec![
+                ".gitignore",
+                ".claude/settings.json",
+                ".opencode/package.json",
+                ".codex/config.toml",
+                ".pi/package.json",
+            ],
+            update_behavior: "idempotently merges Hotpot-managed keys or blocks while preserving user content",
+            force_behavior: "--force does not turn MergeJson, MergeToml, or MergeText into full-file overwrites",
+            force_overwrites_existing: false,
+        },
+        create_if_missing: AssetStrategySummary {
+            paths: vec![".hotpot/config.toml"],
+            update_behavior: "creates the seed only when missing and skips any existing user-owned file",
+            force_behavior: "--force does not overwrite existing CreateIfMissing files",
+            force_overwrites_existing: false,
+        },
+        vuepress_hub: AssetStrategySummary {
+            paths: vec![".hotpot-hub/"],
+            update_behavior: "not refreshed by hotpot update; repair requires hotpot vuepress install --force",
+            force_behavior: "--force on hotpot update does not overwrite VuePress hub files",
+            force_overwrites_existing: false,
+        },
+    }
 }
 
 /// Minimal `which hotpot`: walks `PATH` looking for an executable named
@@ -469,6 +577,9 @@ fn render_human(report: &UpdateReport, dry_run: bool) {
             );
         }
     }
+    println!(
+        "Asset strategy: --force overwrites differing Hotpot-private files only; merge files and user-owned seeds are preserved"
+    );
 
     if report.warnings.is_empty() {
         println!();
@@ -585,6 +696,168 @@ mod tests {
         build_report(args).expect("update --force should refresh differing owned template");
 
         assert_eq!(fs::read_to_string(&template).unwrap(), bundled);
+    }
+
+    #[test]
+    fn update_force_does_not_overwrite_merge_or_seed_assets() {
+        let dir = temp_project_dir("force-preserves-merge-seed");
+        install_claude_fixture(dir.path());
+        let owned_template = dir.path().join(".claude/agents/hotpot-execution.md");
+        let bundled_owned =
+            include_str!("../../assets/platforms/claude/agents/hotpot-execution.md");
+        fs::write(&owned_template, "local stale template").unwrap();
+        fs::write(
+            dir.path().join(".claude/settings.json"),
+            r#"{
+  "env": {
+    "USER_SETTING": "keep-me"
+  }
+}
+"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join(".gitignore"),
+            "user.log\n# hotpot:begin (managed by `hotpot update`; do not edit between these markers)\nstale hotpot block\n# hotpot:end\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join(".hotpot/config.toml"),
+            "language = \"Pirate\"\n",
+        )
+        .unwrap();
+
+        let args = build_force_args(dir.path().to_path_buf(), Some("alice"));
+        let report =
+            build_report(args).expect("update --force should preserve merge and seed assets");
+
+        assert_eq!(fs::read_to_string(&owned_template).unwrap(), bundled_owned);
+
+        let settings = fs::read_to_string(dir.path().join(".claude/settings.json")).unwrap();
+        assert!(
+            settings.contains("USER_SETTING"),
+            "merge json should retain user settings: {settings}"
+        );
+        assert!(
+            settings.contains("hotpot hook claude pre-tool-use"),
+            "merge json should add Hotpot hook settings: {settings}"
+        );
+
+        let gitignore = fs::read_to_string(dir.path().join(".gitignore")).unwrap();
+        assert!(
+            gitignore.contains("user.log"),
+            "merge text should preserve user lines: {gitignore}"
+        );
+        assert!(
+            gitignore.contains("/.hotpot/worktrees/"),
+            "merge text should refresh Hotpot managed block: {gitignore}"
+        );
+        assert!(
+            !gitignore.contains("stale hotpot block"),
+            "merge text should replace only the Hotpot managed block: {gitignore}"
+        );
+
+        let config = fs::read_to_string(dir.path().join(".hotpot/config.toml")).unwrap();
+        assert_eq!(config, "language = \"Pirate\"\n");
+
+        let payload = serde_json::to_value(&report).unwrap();
+        assert!(
+            payload.get("asset_strategy").is_some(),
+            "update report should expose the force-sensitive asset strategy matrix: {payload}"
+        );
+    }
+
+    #[test]
+    fn update_without_force_requires_force_only_for_differing_owned_assets() {
+        let dir = temp_project_dir("without-force-owned");
+        install_claude_fixture(dir.path());
+        let owned_template = dir.path().join(".claude/agents/hotpot-execution.md");
+        fs::write(&owned_template, "local stale template").unwrap();
+
+        let err = build_report(build_args(dir.path().to_path_buf(), Some("alice"), true))
+            .expect_err("differing owned assets should require --force");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("rerun with --force to overwrite"),
+            "owned diff error should explain the force repair path: {msg}"
+        );
+
+        let merge_dir = temp_project_dir("without-force-merge");
+        install_claude_fixture(merge_dir.path());
+        fs::write(
+            merge_dir.path().join(".claude/settings.json"),
+            r#"{
+  "env": {
+    "USER_SETTING": "keep-me"
+  }
+}
+"#,
+        )
+        .unwrap();
+
+        build_report(build_args(
+            merge_dir.path().to_path_buf(),
+            Some("alice"),
+            true,
+        ))
+        .expect("merge assets should self-heal without --force");
+
+        let settings = fs::read_to_string(merge_dir.path().join(".claude/settings.json")).unwrap();
+        assert!(
+            settings.contains("USER_SETTING"),
+            "merge json should retain user settings: {settings}"
+        );
+        assert!(
+            settings.contains("hotpot hook claude pre-tool-use"),
+            "merge json should add Hotpot hook settings: {settings}"
+        );
+    }
+
+    #[test]
+    fn update_report_explains_force_sensitive_asset_strategy() {
+        let dir = temp_project_dir("strategy-report");
+        install_claude_fixture(dir.path());
+
+        let report = build_report(build_args(dir.path().to_path_buf(), Some("alice"), true))
+            .expect("update should report asset strategy");
+        let payload = serde_json::to_value(&report).unwrap();
+        let strategy = payload
+            .get("asset_strategy")
+            .expect("report should include asset_strategy");
+
+        assert_eq!(
+            strategy["owned"]["force_behavior"],
+            "--force overwrites differing Owned files with bundled Hotpot templates"
+        );
+        assert_eq!(strategy["owned"]["force_overwrites_existing"], true);
+        assert_eq!(
+            strategy["merge"]["force_behavior"],
+            "--force does not turn MergeJson, MergeToml, or MergeText into full-file overwrites"
+        );
+        assert_eq!(
+            strategy["merge"]["paths"],
+            serde_json::json!([
+                ".gitignore",
+                ".claude/settings.json",
+                ".opencode/package.json",
+                ".codex/config.toml",
+                ".pi/package.json"
+            ])
+        );
+        assert_eq!(strategy["merge"]["force_overwrites_existing"], false);
+        assert_eq!(
+            strategy["create_if_missing"]["force_behavior"],
+            "--force does not overwrite existing CreateIfMissing files"
+        );
+        assert_eq!(
+            strategy["create_if_missing"]["force_overwrites_existing"],
+            false
+        );
+        assert_eq!(
+            strategy["vuepress_hub"]["update_behavior"],
+            "not refreshed by hotpot update; repair requires hotpot vuepress install --force"
+        );
+        assert_eq!(strategy["vuepress_hub"]["force_overwrites_existing"], false);
     }
 
     #[test]

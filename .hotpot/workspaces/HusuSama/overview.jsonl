@@ -28,3 +28,4 @@
 {"time":"2026-05-28","task_id":"AS0_-HyFfB","title":"fix-codex-hooks-config","commit":"37651a92eead126949cdc8daa73f909e51df5409","status":"Done","active":false}
 {"time":"2026-05-28","task_id":"yNKoRIhTEV","title":"remove-chocolatey-distribution","commit":"630dfc280076e7a9d57e2beb97d4c479f6484014","status":"Done","active":false}
 {"time":"2026-05-28","task_id":"vbMLy6cjpc","title":"fix-codex-vuepress-new-and-stop","commit":"05ed6f2175ed922fc8f62e972c1ba0cfa32dd3c3","status":"Done","active":false}
+{"time":"2026-05-29","task_id":"wL2E9otdnN","title":"optimize-hook-prompt-injection","commit":"62ed4cb15defc8a161c7709a772a130fbad372b4","status":"Done","active":false}

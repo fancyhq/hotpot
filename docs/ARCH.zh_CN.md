@@ -52,7 +52,7 @@ slash 命令是 AI 工作流；CLI 子命令是状态和资源管理。
 | 命令 | 作用 |
 |---|---|
 | `hotpot init` | 安装指定平台的资产与共享 prompt。幂等。`--platform {claude\|opencode\|codex\|pi\|all}`。`--enable-vuepress`（或交互式 yes）会额外跑 `hotpot vuepress install`。 |
-| `hotpot update` | 协作者 day-1 入口。自动探测已安装平台，刷新资产、bootstrap 当前用户 workspace、合并 hotpot 段到 `.gitignore`、跑健康自检。`--force` 会覆盖内容不同的 Hotpot 私有 owned 模板，同时保留 merge / config / 用户自有资产的既有策略。 |
+| `hotpot update` | 协作者 day-1 入口。自动探测已安装平台，刷新资产、bootstrap 当前用户 workspace、合并 hotpot 段到 `.gitignore`、跑健康自检。`--force` 会覆盖内容不同的 Hotpot 私有 owned 模板，同时保留 merge / config / 用户自有资产的既有策略。`--json` 会输出 `asset_strategy` 矩阵，显式展示这些 force 边界。 |
 | `hotpot vuepress {install,uninstall,start,stop,status}` | 管理 opt-in VuePress 集成。`install` 部署 `.hotpot-hub/` + `pnpm install` + opt-in prompts + 翻 `[vuepress] enabled = true`；`uninstall` 反向回滚；`start`/`stop`/`status` 通过 `.hotpot-hub/vuepress.runtime.json` 管理 `pnpm docs:dev` 进程。详见 **VuePress 集成**。 |
 | `/hotpot:new` | 头脑风暴 → 用户批准设计 → 决定执行策略（`## Plan > ### Execution Strategy`，包含 `git-worktree: true|false`）→ 写任务文件前运行 VuePress 文件存在 gate → 启用时读取 `vuepress-style.md` → `hotpot task create [--switch\|--inactive]` → 一次性写入最终 handoff 任务文件。启用 VuePress 时收尾流程额外询问用户是否在浏览器查看并跑 `hotpot vuepress start`。new 阶段不改业务代码。 |
 | `/hotpot:execute` | 入口跑 `hotpot vuepress stop --if-running` 释放 `/hotpot:new` 可能启动的 dev server → 取并读取活动任务 → 解析 `## Plan > ### Execution Strategy` → 按 `git-worktree: true|false` 创建、复用或禁止 worktree → 调起执行子代理 → 收集 diff 与相关记忆 → 调起只读 review 子代理 → 修复循环（≤ 2 轮）→ 缓冲 issue 候选 → 让用户挑选保留范围 → 通过 `hotpot issues candidate add` 落盘。 |
@@ -123,6 +123,19 @@ VuePress 是 **opt-in**：禁用项目里**不会**出现 VuePress 相关 prompt
 | 共享资产 | `SHARED_ASSETS`（`src/assets/shared.rs`） | 每次 `hotpot init` | 跨平台 prompt（output-language、tdd-protocol、hotpot-new/execute/finish-work 等）。 |
 | VuePress opt-in prompts | `VUEPRESS_OPT_IN_ASSETS`（`src/assets/vuepress_opt_in.rs`） | 仅 `hotpot vuepress install` | `vuepress.md`（收尾流程）+ `vuepress-style.md`（markdown 写作规范）。`hotpot-new.md` 的 file-existence gate 只在这两份文件都在盘上时 Read 它们——而它们在盘上恰好等价于 VuePress 已安装（由 `hotpot vuepress install` / `uninstall` 维护的原子状态）。四个平台都靠 Bash `test -f` 直接观测，所以 OpenCode（其插件不把 `HOTPOT_VUEPRESS_ENABLED` 推进 AI 对话）也能跟 Claude / Codex / Pi 走同样的分支。 |
 | VuePress hub 项目 | `VUEPRESS_HUB_ASSETS`（`src/assets/vuepress_hub.rs`） | 仅 `hotpot vuepress install` | `.hotpot-hub/` 内 `package.json`、`pnpm-lock.yaml`、`docs/README.md` 以及**五份 `.vuepress/` 文件**（`config.js` / `client.js` / `sidebar.js` / `styles/index.scss` / `components/TaskIndex.vue`）。前四份是紧密耦合的运行时文件（`config.js` ↔ `client.js` ↔ `sidebar.js` ↔ `TaskIndex.vue` 通过编译期 `__HOTPOT_TASK_INDEX__` 注入串联）；`styles/index.scss` 是**独立装饰层**，由 `@vuepress/theme-default` 通过 `styles/index.scss` 约定自动加载——可安全编辑或删除，不会破坏首页 TaskIndex 注入链。真正的 `pnpm install` + `sync_tasks_links`（幂等：清掉 stale 链、为新用户建链、保留已有链）由 `vuepress::install_hub` 编排，不由资产引擎完成。 |
+
+### update 资产策略
+
+`hotpot update` 复用 `hotpot init` 的资产引擎，但只刷新磁盘上已经存在的平台。它的报告会刻意区分下列资产类别，让操作者明确看到 `--force` 只作用在哪里：
+
+| 策略 | 代表路径 | update 行为 | `--force` 行为 |
+|---|---|---|---|
+| `Owned` | `.hotpot/prompts/*.md`、各平台 Hotpot 私有 agents / commands / skills / plugins / extensions，以及 VuePress 启用时的 opt-in prompts | 写入缺失或内容一致的 Hotpot 私有模板；已存在且内容不同则报错，除非传入 `--force`。 | 只把内容不同的 `Owned` 文件覆盖为 bundled Hotpot 模板。 |
+| `MergeJson` / `MergeToml` / `MergeText` | `.claude/settings.json`、`.opencode/package.json`、`.codex/config.toml`、`.pi/package.json`、`.gitignore` | 幂等合并 Hotpot 管理的 key 或锚点块，同时保留用户内容。 | 不会把 merge 改成整文件覆盖。 |
+| `CreateIfMissing` | `.hotpot/config.toml` | 只在缺失时创建用户自有 seed；已有文件直接跳过。 | 不会覆盖已有 seed 文件。 |
+| VuePress hub 边界 | `.hotpot-hub/` | 不由 `hotpot update` 刷新；修复 hub 需要显式运行 `hotpot vuepress install --force`。 | 不会覆盖 hub 文件。 |
+
+`hotpot update --json` 的 `asset_strategy` 字段与这张矩阵一致，使用稳定英文 key，并包含 `force_overwrites_existing` 布尔值供机器检查。
 
 ### 服务生命周期——三层防护
 

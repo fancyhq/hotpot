@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/fancyhq/hotpot/compare/hotpot-v0.3.7...hotpot-v0.4.0) (2026-05-29)
+
+
+### Features
+
+* expose update asset strategy ([529f668](https://github.com/fancyhq/hotpot/commit/529f66823934fbc3dd3b810c3f0936274df629e2))
+* optimize hook prompt injection ([62ed4cb](https://github.com/fancyhq/hotpot/commit/62ed4cb15defc8a161c7709a772a130fbad372b4))
+
+
+### Bug Fixes
+
+* harden vuepress runtime pid ([435eebf](https://github.com/fancyhq/hotpot/commit/435eebf374ec3be808dcaf6f74d34201ac3845ce))
+
 ## [0.3.7](https://github.com/fancyhq/hotpot/compare/hotpot-v0.3.6...hotpot-v0.3.7) (2026-05-28)
 
 

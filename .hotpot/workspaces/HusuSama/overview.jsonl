@@ -29,3 +29,4 @@
 {"time":"2026-05-28","task_id":"yNKoRIhTEV","title":"remove-chocolatey-distribution","commit":"630dfc280076e7a9d57e2beb97d4c479f6484014","status":"Done","active":false}
 {"time":"2026-05-28","task_id":"vbMLy6cjpc","title":"fix-codex-vuepress-new-and-stop","commit":"05ed6f2175ed922fc8f62e972c1ba0cfa32dd3c3","status":"Done","active":false}
 {"time":"2026-05-29","task_id":"wL2E9otdnN","title":"optimize-hook-prompt-injection","commit":"62ed4cb15defc8a161c7709a772a130fbad372b4","status":"Done","active":false}
+{"time":"2026-05-29","task_id":"nzOMqQtDvH","title":"update-asset-strategy-audit","commit":"529f66823934fbc3dd3b810c3f0936274df629e2","status":"Done","active":false}

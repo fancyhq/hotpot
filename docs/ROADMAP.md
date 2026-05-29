@@ -23,6 +23,7 @@
 - [ ] **bug**: 在使用 `brainstorming` 时，如果进行了其他对话操作，对于 `vuepress` 的规范会缺失，也不会启动并提醒 `vuepress` 查看
 - [ ] **bug**: 使用 `hotpot init --platform` 添加其他平台时，如果 `config.toml` 已配置 `vuepress` ，将不再提示是否启用，有 `hotpot-hub` 文件夹将不再重复添加
 - [ ] **bug**: 使用 `hotpot update` ，提示可以使用 `--force` 强制覆盖，但是执行发现没有这个命令
+- [ ] **bug**: `codex` 中无法关闭 `vuepress` 服务，记录的 `pid` 和真实运行的 `pid` 不是同一个，是否因为沙箱拦截记录了错误的 `pid`
 
 ### Agent
 

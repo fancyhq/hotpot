@@ -147,7 +147,7 @@ VuePress 是 **opt-in**：禁用项目里**不会**出现 VuePress 相关 prompt
 
 `runtime.json` 在 `.hotpot-hub/vuepress.runtime.json`（hub 内，uninstall 删 hub 时自然连带清理）。stale 状态（pid 已死 / ttl 过期）通过下次读取时懒清理，不需要后台轮询。
 
-CLI 的 stop 路径故意强于单 runtime pid kill。Unix 上 `start` 调用了 `setsid()`，因此 `stop` 会先按 runtime pid 对应的进程组清理，再用单 pid 兜底；Windows 继续保留 `taskkill /T` 的进程树语义。runtime pid 已死和 TTL 过期都会复用同一条清理路径。如果父 pid 已经消失但 runtime 端口仍被命令行可识别为当前 hub 的 VuePress/Vite/pnpm 进程占用，runtime 端口兜底只终止这个 Hotpot 自有进程，然后删除 `runtime.json`。
+CLI 的 stop 路径故意强于单 runtime pid kill。Unix 上 `start` 调用了 `setsid()`，因此归属可信的 runtime pid 会先按 runtime pid 对应的进程组清理，再用单 pid 兜底；Windows 继续保留 `taskkill /T` 的进程树语义。`stop` / `status` kill 任何 runtime pid 目标前都会先做 runtime pid 归属校验：该 pid 的命令行必须包含当前精确 `.hotpot-hub` 路径，并且看起来是 VuePress/Vite/pnpm/docs:dev 命令。如果校验失败，Hotpot 会把 runtime 状态视为 stale，不会 kill 该 pid，保留 runtime 端口兜底，并删除 `runtime.json`。runtime pid 已死和 TTL 过期都会复用同一条清理路径。如果父 pid 已经消失或不可信，但 runtime 端口仍被命令行可识别为当前 hub 的 VuePress/Vite/pnpm 进程占用，runtime 端口兜底只终止这个 Hotpot 自有进程，然后删除 `runtime.json`。
 
 VuePress 的公共 env-var 契约：`HOTPOT_VUEPRESS_ENABLED` 始终输出（`"true"`/`"false"`）；`HOTPOT_VUEPRESS_PORT` + `HOTPOT_VUEPRESS_URL` 仅启用时输出。
 

@@ -12,6 +12,8 @@ You are a Hotpot workflow skill for creating a new task. Only enter this flow wh
 
 The full workflow is defined at `$ROOT_DIR/.hotpot/prompts/hotpot-new.md`. Read that file first and follow the workflow end-to-end.
 
+When VuePress is enabled, Do NOT create a plain Markdown task file first and rewrite it later. Read `vuepress-style.md` before the task-file write gate, then create the final task file once with Codex `apply_patch` using an `*** Add File` hunk.
+
 Codex has no `@path` expansion. When the shared body references `@.hotpot/prompts/<name>.md`, resolve the matching file via `$ROOT_DIR/.hotpot/prompts/<name>.md` and use `Read`:
 
 - `@.hotpot/prompts/output-language.md` → resolve as `$ROOT_DIR/.hotpot/prompts/output-language.md` and use `Read`

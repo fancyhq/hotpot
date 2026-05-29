@@ -598,6 +598,77 @@ fn cleanup_targets_for_runtime_pid(pid: u32) -> Vec<CleanupTarget> {
     }
 }
 
+/// Returns true when a command line belongs to this Hotpot VuePress hub.
+///
+/// 判断命令行是否属于当前 Hotpot VuePress hub。
+///
+/// The check is intentionally conservative: the command must contain the
+/// exact hub path and also look like the VuePress/Vite/pnpm dev server
+/// stack. A mismatch means "do not kill by runtime pid"; the later port
+/// fallback can still clean an owned listener.
+///
+/// 这个判断故意保守：命令必须同时包含当前 hub 路径，并且看起来属于
+/// VuePress/Vite/pnpm dev server 栈。不匹配时不能按 runtime pid kill；
+/// 后续端口兜底仍可清理确属本 hub 的监听进程。
+fn is_hotpot_vuepress_command(hub_dir: &Path, command: &str) -> bool {
+    let hub = hub_dir.to_string_lossy();
+    let command_lower = command.to_ascii_lowercase();
+    command.contains(hub.as_ref())
+        && (command_lower.contains("vuepress")
+            || command_lower.contains("vite")
+            || command_lower.contains("pnpm")
+            || command_lower.contains("docs:dev"))
+}
+
+/// Returns cleanup targets only when the runtime pid command is owned.
+///
+/// 仅当 runtime pid 的命令行归属当前 hub 时返回清理目标。
+fn runtime_pid_cleanup_targets_for_command(
+    hub_dir: &Path,
+    pid: u32,
+    command: &str,
+) -> Vec<CleanupTarget> {
+    if is_hotpot_vuepress_command(hub_dir, command) {
+        cleanup_targets_for_runtime_pid(pid)
+    } else {
+        Vec::new()
+    }
+}
+
+/// Returns cleanup targets for a runtime pid command state.
+///
+/// 根据 runtime pid 命令行读取状态返回清理目标。
+///
+/// On Windows, Hotpot cannot currently inspect command lines without
+/// adding another tool dependency, so an unknown command keeps the
+/// existing `taskkill /T` behavior. Unix remains conservative because a
+/// reused pid plus negative process-group kill can terminate unrelated
+/// work.
+///
+/// Windows 目前不引入额外工具依赖读取命令行，因此未知命令行时保留既有
+/// `taskkill /T` 行为。Unix 保持保守，因为 pid 复用加负 pid 进程组 kill
+/// 可能终止无关工作。
+fn runtime_pid_cleanup_targets_for_command_state(
+    hub_dir: &Path,
+    pid: u32,
+    command: Option<&str>,
+) -> Vec<CleanupTarget> {
+    match command {
+        Some(command) => runtime_pid_cleanup_targets_for_command(hub_dir, pid, command),
+        None => {
+            #[cfg(windows)]
+            {
+                cleanup_targets_for_runtime_pid(pid)
+            }
+
+            #[cfg(not(windows))]
+            {
+                Vec::new()
+            }
+        }
+    }
+}
+
 /// A process currently owning the runtime port.
 ///
 /// 当前占用 runtime 端口的进程候选。
@@ -607,21 +678,57 @@ struct PortOwner {
     command: String,
 }
 
+/// Pure cleanup decision used by runtime process cleanup tests.
+///
+/// runtime 进程清理的纯决策结果，供测试覆盖归属判断。
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RuntimeCleanupPlan {
+    /// Runtime pid / process group / process tree targets, after
+    /// ownership validation.
+    /// 通过归属校验后的 runtime pid / 进程组 / 进程树清理目标。
+    runtime_targets: Vec<CleanupTarget>,
+    /// Runtime-port fallback process ids that belong to this hub.
+    /// runtime 端口兜底中确属当前 hub 的进程 id。
+    port_targets: Vec<u32>,
+    /// Runtime state is always discarded once cleanup is entered.
+    /// 一旦进入清理流程，runtime 状态文件总会被丢弃。
+    discard_runtime: bool,
+}
+
+/// Plans cleanup for a stale or failed VuePress runtime state.
+///
+/// 为 stale 或启动失败的 VuePress runtime 状态规划清理动作。
+fn plan_runtime_cleanup(
+    hub_dir: &Path,
+    runtime_pid: u32,
+    runtime_command: Option<&str>,
+    port_owners: &[PortOwner],
+) -> RuntimeCleanupPlan {
+    RuntimeCleanupPlan {
+        runtime_targets: runtime_pid_cleanup_targets_for_command_state(
+            hub_dir,
+            runtime_pid,
+            runtime_command,
+        ),
+        port_targets: hotpot_vuepress_port_cleanup_targets(hub_dir, port_owners),
+        discard_runtime: true,
+    }
+}
+
+/// Returns true when an existing runtime state should block a new start.
+///
+/// 判断已有 runtime 状态是否应阻止新的 start。
+fn existing_runtime_blocks_start(hub_dir: &Path, pid_alive: bool, runtime_command: Option<&str>) -> bool {
+    pid_alive && runtime_command.is_some_and(|command| is_hotpot_vuepress_command(hub_dir, command))
+}
+
 /// Filters port owners down to Hotpot VuePress-related processes.
 ///
 /// 将端口占用进程收窄到 Hotpot VuePress 相关进程。
 fn hotpot_vuepress_port_cleanup_targets(hub_dir: &Path, owners: &[PortOwner]) -> Vec<u32> {
-    let hub = hub_dir.to_string_lossy();
     owners
         .iter()
-        .filter(|owner| {
-            let command = owner.command.to_ascii_lowercase();
-            owner.command.contains(hub.as_ref())
-                && (command.contains("vuepress")
-                    || command.contains("vite")
-                    || command.contains("pnpm")
-                    || command.contains("docs:dev"))
-        })
+        .filter(|owner| is_hotpot_vuepress_command(hub_dir, &owner.command))
         .map(|owner| owner.pid)
         .collect()
 }
@@ -745,9 +852,11 @@ fn terminate_windows_process_tree(pid: u32, force: bool) -> Result<()> {
 ///
 /// 执行共享的 TERM -> 等待 -> KILL 清理流程。
 fn cleanup_runtime_process(root_dir: &str, state: &RuntimeState, print_stopped: bool) {
-    let targets = cleanup_targets_for_runtime_pid(state.pid);
-    if is_pid_alive(state.pid) {
-        for target in &targets {
+    let hub_dir = hotpot_hub_dir(root_dir);
+    let runtime_command = process_command_line(state.pid);
+    let plan = plan_runtime_cleanup(&hub_dir, state.pid, runtime_command.as_deref(), &[]);
+    if is_pid_alive(state.pid) && !plan.runtime_targets.is_empty() {
+        for target in &plan.runtime_targets {
             let _ = terminate_cleanup_target(target, false);
         }
 
@@ -757,7 +866,7 @@ fn cleanup_runtime_process(root_dir: &str, state: &RuntimeState, print_stopped: 
         }
 
         if is_pid_alive(state.pid) {
-            for target in &targets {
+            for target in &plan.runtime_targets {
                 let _ = terminate_cleanup_target(target, true);
             }
         }
@@ -917,7 +1026,13 @@ pub fn start(root_dir: &str, port: u16, ttl_seconds: u64) -> Result<()> {
     verify_install_consistency(root_dir)?;
 
     if let Some(existing) = read_runtime_state(root_dir) {
-        if is_pid_alive(existing.pid) {
+        let hub_dir = hotpot_hub_dir(root_dir);
+        let runtime_command = process_command_line(existing.pid);
+        if existing_runtime_blocks_start(
+            &hub_dir,
+            is_pid_alive(existing.pid),
+            runtime_command.as_deref(),
+        ) {
             bail!(
                 "vuepress already running on port {} (pid {}); run `hotpot vuepress stop` first",
                 existing.port,
@@ -926,7 +1041,7 @@ pub fn start(root_dir: &str, port: u16, ttl_seconds: u64) -> Result<()> {
         }
         // stale —— 静默清理后继续。
         // stale runtime.json — silently clean up and proceed.
-        discard_runtime_state(root_dir);
+        cleanup_runtime_process(root_dir, &existing, false);
     }
 
     let pnpm = find_pnpm()?;
@@ -1106,12 +1221,16 @@ pub fn status(root_dir: &str) -> Result<()> {
 
     if let Some(state) = read_runtime_state(root_dir) {
         let alive = is_pid_alive(state.pid);
+        let owned = process_command_line(state.pid)
+            .as_deref()
+            .map(|command| is_hotpot_vuepress_command(&hotpot_hub_dir(root_dir), command))
+            .unwrap_or(false);
         let expired = match state.expires_at {
             Some(exp) => exp <= Utc::now(),
             None => false,
         };
 
-        if !alive || expired {
+        if !alive || !owned || expired {
             // Dead pid or expired ttl: reuse stop cleanup, including
             // process-group/tree and runtime-port fallback.
             // pid 已死或 ttl 过期：复用 stop 清理，包括进程组/进程树和端口兜底。
@@ -1203,6 +1322,48 @@ mod tests {
     }
 
     #[test]
+    fn runtime_pid_cleanup_skips_unowned_alive_pid() {
+        let hub_dir = Path::new("/repo/.hotpot-hub");
+
+        assert_eq!(
+            runtime_pid_cleanup_targets_for_command(hub_dir, 4242, "python -m http.server 8080"),
+            Vec::<CleanupTarget>::new(),
+            "runtime pid cleanup must not target processes outside the Hotpot VuePress hub"
+        );
+    }
+
+    #[test]
+    fn runtime_pid_cleanup_keeps_owned_vuepress_pid() {
+        let hub_dir = Path::new("/repo/.hotpot-hub");
+        let targets = runtime_pid_cleanup_targets_for_command(
+            hub_dir,
+            4242,
+            "/repo/.hotpot-hub/node_modules/.bin/vuepress dev docs --port 8080",
+        );
+
+        #[cfg(unix)]
+        assert_eq!(
+            targets,
+            vec![CleanupTarget::ProcessGroup(4242), CleanupTarget::Pid(4242)],
+            "Unix owned runtime pid cleanup must preserve process-group cleanup"
+        );
+
+        #[cfg(windows)]
+        assert_eq!(
+            targets,
+            vec![CleanupTarget::ProcessTree(4242)],
+            "Windows owned runtime pid cleanup must preserve process-tree cleanup"
+        );
+
+        #[cfg(not(any(unix, windows)))]
+        assert_eq!(
+            targets,
+            vec![CleanupTarget::Pid(4242)],
+            "Owned runtime pid cleanup must preserve pid cleanup on fallback platforms"
+        );
+    }
+
+    #[test]
     #[cfg(unix)]
     fn unix_cleanup_target_kill_args_encode_process_group() {
         assert_eq!(
@@ -1240,6 +1401,146 @@ mod tests {
             hotpot_vuepress_port_cleanup_targets(hub_dir, &owners),
             vec![11],
             "port fallback must only include identifiable Hotpot VuePress owners under the hub"
+        );
+    }
+
+    #[test]
+    fn readiness_failure_cleanup_uses_owned_port_fallback_when_runtime_pid_unowned() {
+        let hub_dir = Path::new("/repo/.hotpot-hub");
+        let owners = vec![PortOwner {
+            pid: 99,
+            command: "/repo/.hotpot-hub/node_modules/.bin/vite --host 127.0.0.1 --port 8080"
+                .to_string(),
+        }];
+
+        let plan = plan_runtime_cleanup(hub_dir, 4242, Some("python -m http.server 8080"), &owners);
+
+        assert_eq!(
+            plan.runtime_targets,
+            Vec::<CleanupTarget>::new(),
+            "readiness cleanup must ignore an unowned runtime pid"
+        );
+        assert_eq!(
+            plan.port_targets,
+            vec![99],
+            "readiness cleanup must still select owned VuePress/Vite port owners"
+        );
+        assert!(
+            plan.discard_runtime,
+            "readiness cleanup must discard runtime.json after failed start"
+        );
+    }
+
+    #[test]
+    fn readiness_failure_cleanup_ignores_foreign_port_owner() {
+        let hub_dir = Path::new("/repo/.hotpot-hub");
+        let owners = vec![PortOwner {
+            pid: 99,
+            command: "/other/.hotpot-hub/node_modules/.bin/vuepress dev docs --port 8080"
+                .to_string(),
+        }];
+
+        let plan = plan_runtime_cleanup(hub_dir, 4242, Some("python -m http.server 8080"), &owners);
+
+        assert_eq!(
+            plan.runtime_targets,
+            Vec::<CleanupTarget>::new(),
+            "readiness cleanup must ignore an unowned runtime pid"
+        );
+        assert_eq!(
+            plan.port_targets,
+            Vec::<u32>::new(),
+            "readiness cleanup must ignore VuePress port owners outside this hub"
+        );
+        assert!(
+            plan.discard_runtime,
+            "readiness cleanup must discard runtime.json even when no pid is targeted"
+        );
+    }
+
+    #[test]
+    fn status_stale_unowned_runtime_pid_keeps_status_not_running() {
+        let hub_dir = Path::new("/repo/.hotpot-hub");
+        let plan = plan_runtime_cleanup(hub_dir, 4242, Some("python -m http.server 8080"), &[]);
+
+        assert_eq!(
+            plan.runtime_targets,
+            Vec::<CleanupTarget>::new(),
+            "status cleanup must not treat an unowned live pid as a running VuePress server"
+        );
+        assert!(
+            plan.discard_runtime,
+            "status cleanup must discard stale runtime state"
+        );
+    }
+
+    #[test]
+    fn stop_stale_unowned_runtime_pid_still_discards_runtime_state() {
+        let hub_dir = Path::new("/repo/.hotpot-hub");
+        let plan = plan_runtime_cleanup(hub_dir, 4242, Some("python -m http.server 8080"), &[]);
+
+        assert_eq!(
+            plan.runtime_targets,
+            Vec::<CleanupTarget>::new(),
+            "stop cleanup must not kill an unowned runtime pid"
+        );
+        assert_eq!(
+            plan.port_targets,
+            Vec::<u32>::new(),
+            "stop cleanup should have no fallback targets when no owned port owner exists"
+        );
+        assert!(
+            plan.discard_runtime,
+            "stop cleanup must still discard runtime.json for stale unowned runtime state"
+        );
+    }
+
+    #[test]
+    fn start_existing_runtime_skips_unowned_live_pid() {
+        let hub_dir = Path::new("/repo/.hotpot-hub");
+
+        assert!(
+            !existing_runtime_blocks_start(hub_dir, true, Some("python -m http.server 8080")),
+            "start must not treat an unowned live pid as an already-running VuePress server"
+        );
+        assert!(
+            existing_runtime_blocks_start(
+                hub_dir,
+                true,
+                Some("/repo/.hotpot-hub/node_modules/.bin/vuepress dev docs --port 8080")
+            ),
+            "start must still block when the live runtime pid belongs to this hub"
+        );
+        assert!(
+            !existing_runtime_blocks_start(
+                hub_dir,
+                false,
+                Some("/repo/.hotpot-hub/node_modules/.bin/vuepress dev docs --port 8080")
+            ),
+            "dead runtime pids must not block start"
+        );
+    }
+
+    #[test]
+    fn unknown_runtime_command_preserves_platform_cleanup_targets() {
+        let targets = runtime_pid_cleanup_targets_for_command_state(
+            Path::new("/repo/.hotpot-hub"),
+            4242,
+            None,
+        );
+
+        #[cfg(windows)]
+        assert_eq!(
+            targets,
+            vec![CleanupTarget::ProcessTree(4242)],
+            "Windows must preserve taskkill /T cleanup when command ownership cannot be read"
+        );
+
+        #[cfg(not(windows))]
+        assert_eq!(
+            targets,
+            Vec::<CleanupTarget>::new(),
+            "Non-Windows unknown ownership should remain conservative"
         );
     }
 
@@ -1286,6 +1587,27 @@ mod tests {
                 && chinese.contains("runtime 端口兜底")
                 && chinese.contains("TTL"),
             "ARCH.zh_CN.md must describe pid, process-group/tree, TTL, and port cleanup defenses"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn arch_documents_vuepress_runtime_pid_ownership_check() -> anyhow::Result<()> {
+        let english = read_repo_text("docs/ARCH.md")?;
+        let chinese = read_repo_text("docs/ARCH.zh_CN.md")?;
+
+        assert!(
+            english.contains("runtime pid ownership check")
+                && english.contains("does not kill that pid")
+                && english.contains("runtime port fallback"),
+            "ARCH.md must describe runtime pid ownership checks and port fallback"
+        );
+        assert!(
+            chinese.contains("runtime pid 归属校验")
+                && chinese.contains("不会 kill 该 pid")
+                && chinese.contains("runtime 端口兜底"),
+            "ARCH.zh_CN.md must describe runtime pid ownership checks and port fallback"
         );
 
         Ok(())

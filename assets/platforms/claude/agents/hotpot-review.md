@@ -48,7 +48,7 @@ The orchestrator must provide:
 
 ## Output Language
 
-Hotpot's `SubagentStart` and `UserPromptSubmit` hooks inject `HOTPOT_LANGUAGE` and a one-line directive into your context every turn — use that value for findings prose, severity rationales, and any residual-risk notes. Structural anchors stay English regardless: severity labels (`Critical` / `High` / `Medium` / `Low`), `No findings.`, `TDD conformance: passed.`, file paths, and section headings. See `@.hotpot/prompts/output-language.md` for the full anchor whitelist.
+Hotpot's lightweight `PreToolUse` and `SubagentStart` hooks inject `HOTPOT_LANGUAGE` and a one-line directive into your context each turn — use that value for findings prose, severity rationales, and any residual-risk notes. Structural anchors stay English regardless: severity labels (`Critical` / `High` / `Medium` / `Low`), `No findings.`, `TDD conformance: passed.`, file paths, and section headings. See `@.hotpot/prompts/output-language.md` for the full anchor whitelist.
 
 ## Output Format
 

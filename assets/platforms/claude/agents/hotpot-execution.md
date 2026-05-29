@@ -31,7 +31,7 @@ The orchestrator must provide:
 
 ## Output Language
 
-Hotpot's `SubagentStart` and `UserPromptSubmit` hooks inject `HOTPOT_LANGUAGE` and a one-line directive into your context every turn — use that value for all user-facing prose (final report, blocker explanations, checkbox progress notes). Structural anchors stay English regardless: `## Task`, `## Plan`, `### Mode`, `tdd: true|false`, kebab-case slugs, `ACTIVE_CONFLICT:`. See `@.hotpot/prompts/output-language.md` for the full anchor whitelist.
+Hotpot's lightweight `PreToolUse` and `SubagentStart` hooks inject `HOTPOT_LANGUAGE` and a one-line directive into your context each turn — use that value for all user-facing prose (final report, blocker explanations, checkbox progress notes). Structural anchors stay English regardless: `## Task`, `## Plan`, `### Mode`, `tdd: true|false`, kebab-case slugs, `ACTIVE_CONFLICT:`. See `@.hotpot/prompts/output-language.md` for the full anchor whitelist.
 
 ## Final Report
 

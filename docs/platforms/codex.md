@@ -187,10 +187,13 @@ Documented events:
 - `PreToolUse`
 - `PermissionRequest`
 - `PostToolUse`
-- `UserPromptSubmit`
 - `Stop`
 
 **Codex does NOT expose a session-close event** in the documented clinic. `Stop` fires after every assistant turn, which is the wrong semantics for one-shot resource cleanup (it would tear down state mid-conversation). Consequence: Hotpot's VuePress server can't be released via a Codex hook the way it is on Claude Code (`SessionEnd`), OpenCode (`session.deleted`), and Pi (`session_shutdown`). Codex users rely instead on (1) the `/hotpot:execute` pre-flight `hotpot vuepress stop --if-running` for the normal path, and (2) the `--ttl 1800` lazy-expiry in `vuepress start` as a final safety net for the close-without-execute path. The CLI stop path now performs strong cleanup itself: Unix process group first, Windows process tree, stale runtime cleanup, and a conservative runtime-port fallback for Hotpot-owned VuePress/Vite/pnpm processes. See **VuePress Integration** in `docs/ARCH.md`.
+
+Hotpot-specific hook notes:
+- `PreToolUse` now uses `"Bash|Edit|Write"` matcher (regex over tool names) and injects **lightweight model-visible context** containing only `ROOT_DIR` and `HOTPOT_LANGUAGE` plus a short language directive (via `prompt_context_message` in Rust). The `Bash` arm matches every Bash call, not only `hotpot` command content; the payload is kept lightweight so this broader trigger is acceptable for Hotpot Bash commands. The old full context with every `HOTPOT_*_PROMPT` path is no longer delivered — prompt files are resolved via `$ROOT_DIR/.hotpot/prompts/<name>.md`.
+- Hotpot does not configure or handle per-user-message prompt hooks; prompt/language delivery happens through `PreToolUse` and review-memory delivery through `SessionStart`.
 
 Matcher notes:
 
@@ -198,7 +201,7 @@ Matcher notes:
 - Matchers are regex strings.
 - `PermissionRequest`, `PostToolUse`, and `PreToolUse` match tool names such as `Bash`, `Edit`, `Write`, `apply_patch`, and MCP names.
 - `SessionStart` matches startup kinds such as `startup`, `resume`, and `clear`.
-- `UserPromptSubmit` and `Stop` ignore matchers.
+- `Stop` ignores matchers.
 
 Command hook input includes JSON fields such as `session_id`, `transcript_path`, `cwd`, `hook_event_name`, `model`, and `turn_id`.
 

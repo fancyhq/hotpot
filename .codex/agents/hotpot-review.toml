@@ -44,7 +44,7 @@ The orchestrator must provide:
 
 ## Output Language
 
-Hotpot's Codex hooks (`SessionStart`, `PreToolUse`, `UserPromptSubmit`) inject `HOTPOT_LANGUAGE` and a one-line directive into your context every turn — use that value for findings prose, severity rationales, and residual-risk notes. Structural anchors stay English regardless: severity labels (`Critical` / `High` / `Medium` / `Low`), `No findings.`, `TDD conformance: passed.`, file paths, and section headings. The full anchor whitelist lives in `$ROOT_DIR/.hotpot/prompts/output-language.md` — `Read` it when in doubt.
+Hotpot's Codex hooks (`SessionStart`, `PreToolUse`) inject `HOTPOT_LANGUAGE` and a one-line directive into your context each turn — use that value for findings prose, severity rationales, and residual-risk notes. Structural anchors stay English regardless: severity labels (`Critical` / `High` / `Medium` / `Low`), `No findings.`, `TDD conformance: passed.`, file paths, and section headings. The full anchor whitelist lives in `$ROOT_DIR/.hotpot/prompts/output-language.md` — `Read` it when in doubt.
 
 ## Output Format
 

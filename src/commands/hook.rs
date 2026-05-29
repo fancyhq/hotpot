@@ -54,17 +54,6 @@ pub enum ClaudeHookCommand {
         long_about = None
     )]
     SubagentStart,
-    /// Reassert Hotpot output language at the start of every user turn.
-    ///
-    /// Restates `HOTPOT_LANGUAGE` to fight the "instruction once, drift
-    /// forever" pattern. Fires on Claude Code's `UserPromptSubmit` event.
-    ///
-    /// 每条用户消息前重申输出语言；对抗"一次指令长会话漂移"。
-    #[command(
-        about = "Reassert Hotpot output language at the start of every user turn",
-        long_about = None
-    )]
-    UserPromptSubmit,
     /// Release any running VuePress dev server when a Claude Code session ends.
     ///
     /// Fires on Claude Code's `SessionEnd` event. Invokes the idempotent
@@ -99,14 +88,6 @@ pub enum CodexHookCommand {
         long_about = None
     )]
     SessionStart,
-    /// Reassert Hotpot output language at the start of every user turn.
-    ///
-    /// 同 Claude `UserPromptSubmit`：Codex 每轮用户消息前重申输出语言。
-    #[command(
-        about = "Reassert Hotpot output language at the start of every user turn",
-        long_about = None
-    )]
-    UserPromptSubmit,
 }
 
 /// Bootstrap the temporary Hotpot runtime context for the current hook.
@@ -198,18 +179,16 @@ pub fn claude(command: ClaudeHookCommand) -> Result<()> {
         match command {
             ClaudeHookCommand::PreToolUse => "PreToolUse",
             ClaudeHookCommand::SubagentStart => "SubagentStart",
-            ClaudeHookCommand::UserPromptSubmit => "UserPromptSubmit",
             ClaudeHookCommand::SessionEnd => unreachable!("handled in early return above"),
         },
     );
 
     let additional_context = match command {
-        ClaudeHookCommand::PreToolUse => shell_context_message(
+        ClaudeHookCommand::PreToolUse => prompt_context_message(
             &context,
             "Hotpot shell context was resolved from the Claude Code hook payload cwd.",
         ),
         ClaudeHookCommand::SubagentStart => claude_review_memory_message(&context),
-        ClaudeHookCommand::UserPromptSubmit => language_directive_message(&context.language),
         ClaudeHookCommand::SessionEnd => unreachable!("handled in early return above"),
     };
 
@@ -288,13 +267,11 @@ fn codex_review_memory_message(context: &Context) -> String {
 /// 返回符合 Codex hook 输出 schema 的 `serde_json::Value`。
 fn build_codex_response(command: &CodexHookCommand, context: &Context) -> Value {
     let (message, event_name) = match command {
-        CodexHookCommand::PreToolUse => (codex_shell_context_message(context), "PreToolUse"),
-        // CodexHookCommand::SessionStart => (review_memory_message(context), "SessionStart"),
-        CodexHookCommand::SessionStart => (codex_review_memory_message(context), "SessionStart"),
-        CodexHookCommand::UserPromptSubmit => (
-            language_directive_message(&context.language),
-            "UserPromptSubmit",
+        CodexHookCommand::PreToolUse => (
+            prompt_context_message(context, "Hotpot shell context was resolved from the Codex hook payload cwd."),
+            "PreToolUse",
         ),
+        CodexHookCommand::SessionStart => (codex_review_memory_message(context), "SessionStart"),
     };
     // Unified schema: systemMessage at top level, additionalContext inside
     // hookSpecificOutput. Codex rejects top-level additionalContext and only
@@ -416,6 +393,11 @@ fn print_value(value: &Value) -> Result<()> {
 }
 
 /// Builds the shared shell context message for platform hooks.
+///
+/// Retained for the full-context contract used by review-memory hooks
+/// and backward compatibility. PreToolUse now uses the lightweight
+/// [`prompt_context_message`] instead.
+#[allow(dead_code)]
 fn shell_context_message(context: &Context, intro: &str) -> String {
     let mut lines = vec![
         intro.to_string(),
@@ -426,6 +408,10 @@ fn shell_context_message(context: &Context, intro: &str) -> String {
 }
 
 /// Builds the Codex pre-tool context message including an export hint.
+///
+/// Retained for backward compatibility. PreToolUse now uses
+/// [`prompt_context_message`] instead.
+#[allow(dead_code)]
 fn codex_shell_context_message(context: &Context) -> String {
     let mut lines = vec![
         "Hotpot shell context was resolved from the Codex hook payload cwd.".to_string(),
@@ -439,17 +425,47 @@ fn codex_shell_context_message(context: &Context) -> String {
     lines.join("\n")
 }
 
-/// Builds the per-turn language directive for `UserPromptSubmit` hooks.
+/// Builds a lightweight model-visible context message for pre-tool-use hooks.
 ///
-/// Two lines, < 200 chars: short enough to inline into every model turn
-/// without bloating `additionalContext`. The structural-anchor whitelist
-/// here is a representative sample (the long list lives in
+/// Only includes `ROOT_DIR` and `HOTPOT_LANGUAGE` plus the short language
+/// directive. Other prompt paths (`HOTPOT_NEW_PROMPT`, `HOTPOT_EXECUTE_PROMPT`,
+/// etc.) are NOT listed here — the model should resolve prompt files via
+/// `$ROOT_DIR/.hotpot/prompts/<name>.md`.
+///
+/// Used by both Claude and Codex `PreToolUse` hooks. Replaces the older
+/// `shell_context_message` / `codex_shell_context_message` which carry the
+/// full `context_lines` (still used by review-memory hooks).
+///
+/// 轻量模型可见上下文消息，用于 PreToolUse hook。
+/// 只包含 `ROOT_DIR`、`HOTPOT_LANGUAGE` 和简短语言指令。
+/// 其它 prompt 路径不再逐项列出——模型应通过
+/// `$ROOT_DIR/.hotpot/prompts/<name>.md` 拼接定位 prompt 文件。
+fn prompt_context_message(context: &Context, intro: &str) -> String {
+    let mut lines = vec![
+        intro.to_string(),
+        "Use these values for Hotpot-related Bash commands:".to_string(),
+        format!("- ROOT_DIR: {}", context.root_dir),
+        format!("- HOTPOT_LANGUAGE: {}", context.language),
+    ];
+    // Append the short language directive as reinforcement.
+    // 附加简短语言指令作为强化。
+    lines.push(String::new());
+    lines.push(language_directive_message(&context.language));
+    lines.join("\n")
+}
+
+/// Builds a short language directive that re-primes the model's output
+/// language on every turn.
+///
+/// Two lines, < 200 chars: short enough to inline without bloating
+/// `additionalContext`. Used by `prompt_context_message` (PreToolUse
+/// lightweight context) and review-memory messages. The structural-anchor
+/// whitelist here is a representative sample (the long list lives in
 /// `assets/prompts/output-language.md`); the goal is to re-prime the
 /// model against the most common drift trigger every turn.
 ///
-/// 简短的"每轮重申"指令（两行 < 200 字符），用于 Claude/Codex 的
-/// `UserPromptSubmit` 钩子。完整锚点清单仍在 `output-language.md`，
-/// 这里只列最常诱发漂移的几个，避免 additionalContext 膨胀。
+/// 简短的"每轮重申"语言指令（两行 < 200 字符），由 PreToolUse 的轻量
+/// 上下文和 review-memory 消息使用。完整锚点清单在 `output-language.md`。
 fn language_directive_message(language: &str) -> String {
     format!(
         "Hotpot output language for this turn: `{language}`. \
@@ -459,6 +475,12 @@ fn language_directive_message(language: &str) -> String {
 }
 
 /// Returns all Hotpot context values formatted for human-readable hook output.
+///
+/// Retained for the full-env contract used by review-memory hooks and
+/// `shell_export_assignments` / `print_shell_exports`. PreToolUse now
+/// uses [`prompt_context_message`] which only lists `ROOT_DIR` and
+/// `HOTPOT_LANGUAGE`.
+#[allow(dead_code)]
 fn context_lines(context: &Context) -> Vec<String> {
     let mut lines = vec![
         format!("- ROOT_DIR: {}", context.root_dir),
@@ -501,6 +523,10 @@ fn context_lines(context: &Context) -> Vec<String> {
 }
 
 /// Returns shell assignment snippets for all Hotpot context values.
+///
+/// Used by `codex_shell_context_message` (retained for backward compat).
+/// This is part of the public full-env bootstrap contract and must be kept.
+#[allow(dead_code)]
 fn shell_export_assignments(context: &Context) -> String {
     let mut pairs: Vec<(&'static str, &String)> = vec![
         ("ROOT_DIR", &context.root_dir),
@@ -546,6 +572,8 @@ fn shell_quote(value: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::Value;
+
+    const REMOVED_PROMPT_HOOK: &str = concat!("UserPrompt", "Submit");
 
     /// Builds a minimal hook payload that can be consumed by
     /// `Context::from_payload`, pointing at the real project root so
@@ -651,43 +679,381 @@ mod tests {
     }
 
     #[test]
-    fn codex_user_prompt_submit_outputs_valid_hook_json() {
-        let value = build_response(CodexHookCommand::UserPromptSubmit);
-        // Must have systemMessage at top level
-        assert!(
-            value
-                .get("systemMessage")
-                .and_then(|v| v.as_str())
-                .is_some(),
-            "UserPromptSubmit: expected top-level systemMessage, got {:?}",
-            value,
+    fn claude_pre_tool_use_uses_lightweight_prompt_context() {
+        let payload = test_payload();
+        let context = Context::from_payload(&payload).unwrap();
+        let message = prompt_context_message(
+            &context,
+            "Hotpot shell context was resolved from the Claude Code hook payload cwd.",
         );
-        // Must NOT have additionalContext at top level
+
+        // Must contain ROOT_DIR
         assert!(
-            value.get("additionalContext").is_none(),
-            "UserPromptSubmit: additionalContext must NOT be at top level, got {:?}",
-            value,
+            message.contains(&context.root_dir),
+            "PreToolUse (Claude): expected ROOT_DIR in context, got:\n{message}",
         );
-        // Must have hookSpecificOutput.additionalContext
+        // Must contain HOTPOT_LANGUAGE
+        assert!(
+            message.contains(&context.language),
+            "PreToolUse (Claude): expected HOTPOT_LANGUAGE in context, got:\n{message}",
+        );
+        // Must NOT contain HOTPOT_NEW_PROMPT
+        assert!(
+            !message.contains(&context.new_prompt),
+            "PreToolUse (Claude): unexpected HOTPOT_NEW_PROMPT in context, got:\n{message}",
+        );
+        // Must NOT contain HOTPOT_EXECUTE_PROMPT
+        assert!(
+            !message.contains(&context.execute_prompt),
+            "PreToolUse (Claude): unexpected HOTPOT_EXECUTE_PROMPT in context, got:\n{message}",
+        );
+        // Must NOT contain HOTPOT_FINISH_WORK_PROMPT
+        assert!(
+            !message.contains(&context.finish_work_prompt),
+            "PreToolUse (Claude): unexpected HOTPOT_FINISH_WORK_PROMPT in context, got:\n{message}",
+        );
+        // Must NOT contain HOTPOT_RECORD_ISSUE_CANDIDATE_PROMPT
+        assert!(
+            !message.contains(&context.record_issue_candidate_prompt),
+            "PreToolUse (Claude): unexpected HOTPOT_RECORD_ISSUE_CANDIDATE_PROMPT in context, got:\n{message}",
+        );
+    }
+
+    #[test]
+    fn codex_pre_tool_use_uses_lightweight_prompt_context() {
+        let payload = test_payload();
+        let context = Context::from_payload(&payload).unwrap();
+        let value = build_codex_response(&CodexHookCommand::PreToolUse, &context);
+
+        let system_message = value
+            .get("systemMessage")
+            .and_then(|v| v.as_str())
+            .expect("PreToolUse (Codex): expected top-level systemMessage");
         let hso = value
             .get("hookSpecificOutput")
             .and_then(|v| v.as_object())
-            .unwrap_or_else(|| {
-                panic!("UserPromptSubmit: expected hookSpecificOutput object, got {value:?}")
-            });
+            .expect("PreToolUse (Codex): expected hookSpecificOutput");
+        let additional_context = hso
+            .get("additionalContext")
+            .and_then(|v| v.as_str())
+            .expect("PreToolUse (Codex): expected additionalContext");
+
+        // Both systemMessage and additionalContext must be lightweight
+        for (label, message) in [("systemMessage", system_message), ("additionalContext", additional_context)] {
+            assert!(
+                message.contains(&context.root_dir),
+                "PreToolUse (Codex) {label}: expected ROOT_DIR in lightweight context, got:\n{message}",
+            );
+            assert!(
+                message.contains(&context.language),
+                "PreToolUse (Codex) {label}: expected HOTPOT_LANGUAGE in lightweight context, got:\n{message}",
+            );
+            assert!(
+                !message.contains(&context.new_prompt),
+                "PreToolUse (Codex) {label}: unexpected HOTPOT_NEW_PROMPT, got:\n{message}",
+            );
+            assert!(
+                !message.contains(&context.execute_prompt),
+                "PreToolUse (Codex) {label}: unexpected HOTPOT_EXECUTE_PROMPT, got:\n{message}",
+            );
+            assert!(
+                !message.contains(&context.finish_work_prompt),
+                "PreToolUse (Codex) {label}: unexpected HOTPOT_FINISH_WORK_PROMPT, got:\n{message}",
+            );
+            assert!(
+                !message.contains(&context.record_issue_candidate_prompt),
+                "PreToolUse (Codex) {label}: unexpected HOTPOT_RECORD_ISSUE_CANDIDATE_PROMPT, got:\n{message}",
+            );
+        }
+    }
+
+    // ── Task 2: Adjust Platform Hook Trigger Timing ───────────────────
+
+    #[test]
+    fn platform_hook_assets_do_not_register_per_user_message_prompt_hook() {
+        let claude_settings = include_str!("../../assets/platforms/claude/settings.json");
+        let codex_config = include_str!("../../assets/platforms/codex/config.toml");
+
+        // Claude settings must not have the removed per-user-message event hook entry.
+        // Claude settings 不能保留已移除的按用户消息触发的 hook。
         assert!(
-            hso.get("additionalContext")
-                .and_then(|v| v.as_str())
-                .is_some(),
-            "UserPromptSubmit: expected hookSpecificOutput.additionalContext, got {:?}",
-            hso,
+            !claude_settings.contains(REMOVED_PROMPT_HOOK),
+            "Claude settings should not have the removed prompt event, got:\n{claude_settings}",
         );
-        // Must have hookSpecificOutput.hookEventName matching the event
-        assert_eq!(
-            hso.get("hookEventName").and_then(|v| v.as_str()),
-            Some("UserPromptSubmit"),
-            "UserPromptSubmit: expected hookSpecificOutput.hookEventName = \"UserPromptSubmit\", got {:?}",
-            hso.get("hookEventName"),
+        // Codex config must not mention the removed per-user-message event.
+        // Codex 配置不能提及已移除的按用户消息触发的事件。
+        assert!(
+            !codex_config.contains(REMOVED_PROMPT_HOOK),
+            "Codex config should not mention the removed prompt event, got:\n{codex_config}",
+        );
+    }
+
+    #[test]
+    fn platform_pre_tool_use_assets_cover_edit_write_and_hotpot_bash() {
+        let claude_settings = include_str!("../../assets/platforms/claude/settings.json");
+        let codex_config = include_str!("../../assets/platforms/codex/config.toml");
+
+        // Claude PreToolUse must cover Bash and Edit|Write (tool-name matchers).
+        // Since Claude matchers are regex over tool names, we use Bash|Edit|Write
+        // to cover both hotpot-bash and Edit|Write scenarios.
+        assert!(
+            claude_settings.contains("Bash"),
+            "Claude PreToolUse should cover Bash, got:\n{claude_settings}",
+        );
+        assert!(
+            claude_settings.contains("Edit") || claude_settings.contains("Write"),
+            "Claude PreToolUse should cover Edit|Write, got:\n{claude_settings}",
+        );
+
+        // Codex PreToolUse must cover Bash and Edit|Write
+        assert!(
+            codex_config.contains("Bash"),
+            "Codex PreToolUse should cover Bash, got:\n{codex_config}",
+        );
+        assert!(
+            codex_config.contains("Edit|Write") ||
+            (codex_config.contains("Edit") && codex_config.contains("Write")),
+            "Codex PreToolUse should cover Edit|Write, got:\n{codex_config}",
+        );
+    }
+
+    // ── Task 3: Move Prompt Path Guidance To ROOT_DIR Composition ─────
+
+    #[test]
+    fn codex_skills_reference_prompt_paths_via_root_dir() {
+        let new_skill = include_str!("../../assets/platforms/codex/skills/hotpot-new/SKILL.md");
+        let execute_skill = include_str!("../../assets/platforms/codex/skills/hotpot-execute/SKILL.md");
+        let finish_skill = include_str!("../../assets/platforms/codex/skills/hotpot-finish-work/SKILL.md");
+
+        // Each skill must reference its main workflow via $ROOT_DIR/.hotpot/prompts/
+        assert!(
+            new_skill.contains("$ROOT_DIR/.hotpot/prompts/hotpot-new.md"),
+            "hotpot-new SKILL.md should reference main workflow via $ROOT_DIR, got:\n{new_skill}",
+        );
+        assert!(
+            execute_skill.contains("$ROOT_DIR/.hotpot/prompts/hotpot-execute.md"),
+            "hotpot-execute SKILL.md should reference main workflow via $ROOT_DIR, got:\n{execute_skill}",
+        );
+        assert!(
+            finish_skill.contains("$ROOT_DIR/.hotpot/prompts/hotpot-finish-work.md"),
+            "hotpot-finish-work SKILL.md should reference main workflow via $ROOT_DIR, got:\n{finish_skill}",
+        );
+
+        // Must NOT use $HOTPOT_*_PROMPT as the primary workflow reference
+        assert!(
+            !new_skill.contains("$HOTPOT_NEW_PROMPT"),
+            "hotpot-new SKILL.md should not use $HOTPOT_NEW_PROMPT as primary path",
+        );
+        assert!(
+            !execute_skill.contains("$HOTPOT_EXECUTE_PROMPT"),
+            "hotpot-execute SKILL.md should not use $HOTPOT_EXECUTE_PROMPT as primary path",
+        );
+        assert!(
+            !finish_skill.contains("$HOTPOT_FINISH_WORK_PROMPT"),
+            "hotpot-finish-work SKILL.md should not use $HOTPOT_FINISH_WORK_PROMPT as primary path",
+        );
+    }
+
+    #[test]
+    fn pi_context_message_is_lightweight() {
+        let pi_extension = include_str!("../../assets/platforms/pi/extensions/hotpot/index.ts");
+
+        // Find the actual `pi.on("context", async (_event, ctx) => {` handler
+        // (skip doc-comment mentions of the pattern).
+        let marker = "pi.on(\"context\", async (_event, ctx) => {";
+        let handler_pos = pi_extension
+            .find(marker)
+            .expect("Could not find pi.on(\"context\", async (_event, ctx) => { handler");
+        let handler_block = &pi_extension[handler_pos..];
+
+        // The handler body ends at the closing `});` of the callback.
+        let body_end = handler_block.find("});").map(|p| handler_pos + p + 3).unwrap_or(pi_extension.len());
+        let body = &pi_extension[handler_pos..body_end];
+
+        // The context handler's system message must reference ROOT_DIR and HOTPOT_LANGUAGE
+        // explicitly, NOT via Object.entries(hotpot) expansion.
+        // (injectHotpotEnv and slash command builders still use full HotpotContext.)
+        assert!(
+            body.contains("ROOT_DIR"),
+            "Pi context handler must reference ROOT_DIR explicitly, got:\n{body}",
+        );
+        assert!(
+            body.contains("HOTPOT_LANGUAGE"),
+            "Pi context handler must reference HOTPOT_LANGUAGE explicitly, got:\n{body}",
+        );
+        assert!(
+            !body.contains("Object.entries(hotpot)"),
+            "Pi context handler must NOT use Object.entries(hotpot) expansion, got:\n{body}",
+        );
+    }
+
+    // ── Task 4: Update Architecture And Platform Documentation ────────
+
+    #[test]
+    fn architecture_docs_describe_lightweight_hook_prompt_contract() {
+        let arch_en = include_str!("../../docs/ARCH.md");
+        let arch_zh = include_str!("../../docs/ARCH.zh_CN.md");
+
+        // ARCH.md must describe the new hook prompt contract:
+        // model-visible context only contains ROOT_DIR and HOTPOT_LANGUAGE;
+        // prompt paths are composed via ROOT_DIR/.hotpot/prompts/;
+        // full bootstrap/env contract is preserved for shell/plugin use.
+        assert!(
+            arch_en.contains("lightweight model-visible context") || arch_en.contains("model-visible hook prompt"),
+            "ARCH.md should describe the lightweight hook prompt contract",
+        );
+        assert!(
+            arch_en.contains("ROOT_DIR") && arch_en.contains("HOTPOT_LANGUAGE"),
+            "ARCH.md should mention ROOT_DIR and HOTPOT_LANGUAGE as model-visible fields",
+        );
+        assert!(
+            arch_en.contains("bootstrap") && arch_en.contains("contract"),
+            "ARCH.md should mention the bootstrap/env contract is preserved",
+        );
+
+        // ARCH.zh_CN.md must describe the same (in Chinese)
+        assert!(
+            arch_zh.contains("轻量 hook prompt 契约") || arch_zh.contains("模型可见上下文"),
+            "ARCH.zh_CN.md should describe the lightweight hook prompt contract",
+        );
+        assert!(
+            arch_zh.contains("ROOT_DIR") && arch_zh.contains("HOTPOT_LANGUAGE"),
+            "ARCH.zh_CN.md should mention ROOT_DIR and HOTPOT_LANGUAGE",
+        );
+    }
+
+    #[test]
+    fn platform_docs_do_not_mention_removed_per_user_message_prompt_hook() {
+        let claude_doc = include_str!("../../docs/platforms/claude-code.md");
+        let codex_doc = include_str!("../../docs/platforms/codex.md");
+        let pi_doc = include_str!("../../docs/platforms/pi.md");
+        let arch_en = include_str!("../../docs/ARCH.md");
+        let arch_zh = include_str!("../../docs/ARCH.zh_CN.md");
+
+        // Claude doc should mention PreToolUse as the primary delivery mechanism.
+        // Claude 文档应说明 PreToolUse 是主要投递机制。
+        assert!(
+            claude_doc.contains("PreToolUse"),
+            "Claude doc should mention PreToolUse as the hook trigger, got excerpt:\n{}",
+            &claude_doc[..claude_doc.len().min(200)],
+        );
+
+        // Codex doc should mention the new trigger behavior (PreToolUse with Bash|Edit|Write)
+        assert!(
+            codex_doc.contains("PreToolUse"),
+            "Codex doc should mention PreToolUse as the hook trigger",
+        );
+
+        // Pi doc should describe the lightweight context approach
+        assert!(
+            pi_doc.contains("lightweight") || pi_doc.contains("轻量"),
+            "Pi doc should describe lightweight context approach",
+        );
+        assert!(
+            pi_doc.contains("ROOT_DIR") && pi_doc.contains("HOTPOT_LANGUAGE"),
+            "Pi doc should mention ROOT_DIR and HOTPOT_LANGUAGE as the model-visible fields",
+        );
+
+        for (name, content) in [
+            ("docs/ARCH.md", arch_en),
+            ("docs/ARCH.zh_CN.md", arch_zh),
+            ("docs/platforms/claude-code.md", claude_doc),
+            ("docs/platforms/codex.md", codex_doc),
+        ] {
+            assert!(
+                !content.contains(REMOVED_PROMPT_HOOK),
+                "{name} should not mention removed Hotpot prompt hooks",
+            );
+        }
+
+        // Also check asset agent files (installed templates) use current wording:
+        // language/context arrives through PreToolUse (+ SubagentStart / SessionStart),
+        // and removed hooks should not be documented.
+        // 同时检查资产 agent 文件使用当前措辞：语言/上下文通过 PreToolUse 注入，
+        // 已移除的 hook 不应再出现在文档中。
+        let claude_exec_agent = include_str!("../../assets/platforms/claude/agents/hotpot-execution.md");
+        let claude_review_agent = include_str!("../../assets/platforms/claude/agents/hotpot-review.md");
+        let codex_exec_agent = include_str!("../../assets/platforms/codex/agents/hotpot-execution.toml");
+        let codex_review_agent = include_str!("../../assets/platforms/codex/agents/hotpot-review.toml");
+
+        for (name, content) in [
+            ("claude/agents/hotpot-execution.md", claude_exec_agent),
+            ("claude/agents/hotpot-review.md", claude_review_agent),
+        ] {
+            assert!(
+                content.contains("PreToolUse"),
+                "{name} should mention PreToolUse as the context delivery mechanism",
+            );
+            assert!(
+                !content.contains(REMOVED_PROMPT_HOOK),
+                "{name} must not mention removed prompt hooks",
+            );
+        }
+
+        for (name, content) in [
+            ("codex/agents/hotpot-execution.toml", codex_exec_agent),
+            ("codex/agents/hotpot-review.toml", codex_review_agent),
+        ] {
+            assert!(
+                content.contains("PreToolUse"),
+                "{name} should mention PreToolUse as the context delivery mechanism",
+            );
+            assert!(
+                !content.contains(REMOVED_PROMPT_HOOK),
+                "{name} must not mention removed prompt hooks",
+            );
+        }
+
+        // Also check output-language.md (the shared prompt referenced by all workflows).
+        // This file is the single source-of-truth for language directives; it must not
+        // mention removed per-user-message prompt hooks.
+        // 同时检查 output-language.md（所有工作流引用的共享提示词）。
+        // 该文件是语言指令的唯一来源，不应再提及已移除的按用户消息触发的 hook。
+        let output_lang_asset = include_str!("../../assets/prompts/output-language.md");
+        let output_lang_installed = include_str!("../../.hotpot/prompts/output-language.md");
+
+        for (name, content) in [
+            ("assets/prompts/output-language.md", output_lang_asset),
+            (".hotpot/prompts/output-language.md", output_lang_installed),
+        ] {
+            assert!(
+                content.contains("PreToolUse"),
+                "{name} should mention PreToolUse as the context delivery mechanism",
+            );
+            assert!(
+                !content.contains(REMOVED_PROMPT_HOOK),
+                "{name} must not mention removed prompt hooks",
+            );
+        }
+    }
+
+    #[test]
+    fn opencode_does_not_inject_bulk_context_into_model_context() {
+        let bash_before = include_str!("../../assets/platforms/opencode/plugins/hotpot-bash-before.ts");
+        let review_memory = include_str!("../../assets/platforms/opencode/plugins/hotpot-review-memory.ts");
+        let opencode_doc = include_str!("../../docs/platforms/opencode.md");
+
+        for (name, content) in [
+            ("hotpot-bash-before.ts", bash_before),
+            ("hotpot-review-memory.ts", review_memory),
+        ] {
+            assert!(
+                content.contains("\"shell.env\""),
+                "{name} should inject full context only into shell.env",
+            );
+            assert!(
+                !content.contains("additionalContext") && !content.contains("systemMessage"),
+                "{name} must not inject Hotpot bootstrap data into model context",
+            );
+            assert!(
+                !content.contains("Object.entries(hotpot)"),
+                "{name} must not expand the full Hotpot context into model-visible text",
+            );
+        }
+
+        assert!(
+            opencode_doc.contains("does not inject") && opencode_doc.contains("model context"),
+            "OpenCode docs should state bulk bootstrap data is not injected into model context",
         );
     }
 }

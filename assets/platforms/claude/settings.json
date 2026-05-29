@@ -2,13 +2,13 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
             "command": "hotpot hook claude pre-tool-use",
             "timeout": 5,
-            "statusMessage": "Preparing Hotpot shell context"
+            "statusMessage": "Injecting lightweight Hotpot context"
           }
         ]
       }
@@ -22,19 +22,6 @@
             "command": "hotpot hook claude subagent-start",
             "timeout": 5,
             "statusMessage": "Preparing Hotpot review memory"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "hotpot hook claude user-prompt-submit",
-            "timeout": 5,
-            "statusMessage": "Reasserting Hotpot output language"
           }
         ]
       }

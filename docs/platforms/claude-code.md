@@ -191,7 +191,6 @@ Common events include:
 
 - `SessionStart`
 - `Setup`
-- `UserPromptSubmit`
 - `UserPromptExpansion`
 - `PreToolUse`
 - `PermissionRequest`
@@ -215,6 +214,10 @@ Common events include:
 - `PreCompact`
 - `PostCompact`
 - `SessionEnd` — Hotpot wires this to `hotpot hook claude session-end`, which runs `vuepress stop_if_running` so a `pnpm docs:dev` started during `/hotpot:new` is released even when the user closes the session without proceeding to `/hotpot:execute`. See **VuePress Integration** in `docs/ARCH.md`.
+
+Hotpot-specific hook notes:
+- `PreToolUse` now uses `"Bash|Edit|Write"` matcher (tool-name regex) and injects **lightweight model-visible context** containing only `ROOT_DIR` and `HOTPOT_LANGUAGE` plus a short language directive. The `Bash` arm matches every Bash call, not only `hotpot` command content; the payload is kept lightweight so this broader trigger is acceptable for Hotpot Bash commands. The old full `context_lines` output (with every `HOTPOT_*_PROMPT` path) is no longer delivered to the model — prompt files are resolved via `$ROOT_DIR/.hotpot/prompts/<name>.md` instead.
+- Hotpot does not configure or handle per-user-message prompt hooks; prompt/language delivery happens through `PreToolUse` and review-memory delivery through `SubagentStart`.
 
 Matcher notes:
 

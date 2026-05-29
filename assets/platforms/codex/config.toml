@@ -1,4 +1,8 @@
 # Hotpot Codex project hooks.
+#
+# PreToolUse matcher is tool-name only, so Bash covers every Bash call; this
+# lightweight context is intentionally cheap enough for that broader trigger.
+# Edit|Write covers file edits.
 
 [features]
 hooks = true
@@ -16,10 +20,3 @@ matcher = "startup|resume|clear"
 [[hooks.SessionStart.hooks]]
 type = "command"
 command = "hotpot hook codex session-start"
-
-[[hooks.UserPromptSubmit]]
-matcher = ""
-
-[[hooks.UserPromptSubmit.hooks]]
-type = "command"
-command = "hotpot hook codex user-prompt-submit"

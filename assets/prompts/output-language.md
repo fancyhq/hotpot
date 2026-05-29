@@ -21,9 +21,9 @@ Before producing any natural-language output for the user, obey the project lang
 
 Hotpot resolves `<project>/.hotpot/config.toml::language` (or the `HOTPOT_LANGUAGE` env override) in Rust on every hook invocation and re-injects it into your context **each turn**:
 
-- **Claude Code**: `PreToolUse` + `SubagentStart` + `UserPromptSubmit` hooks each carry a `HOTPOT_LANGUAGE: <value>` line plus a one-line directive in `additionalContext`.
-- **Codex**: `PreToolUse` + `SessionStart` + `UserPromptSubmit` hooks carry the same value via `systemMessage` and `additionalContext`.
-- **OpenCode**: the Hotpot plugin's `shell.env` exports `HOTPOT_LANGUAGE` to every Bash tool call; the orchestrator and sub-agent bodies also restate the directive.
+- **Claude Code**: lightweight `PreToolUse` and `SubagentStart` hooks carry a `HOTPOT_LANGUAGE: <value>` line plus a one-line directive in `additionalContext`.
+- **Codex**: `SessionStart` plus lightweight `PreToolUse` hooks carry the same value via `systemMessage` and `additionalContext`.
+- **OpenCode**: the Hotpot plugin's `shell.env` exports `HOTPOT_LANGUAGE` to every Bash tool call; it does not inject the bootstrap context into model context. The orchestrator and sub-agent bodies restate the directive.
 - **Pi**: `pi.on("context", …)` injects `HOTPOT_LANGUAGE` plus a one-line directive into every provider request.
 
 Trust the **most recent injection** you have seen — it is always fresh. The value is a free-form string written verbatim by the user (e.g. `简体中文`, `english`, `日本語`, `Français`, `zh-CN`). When in doubt, default to English.

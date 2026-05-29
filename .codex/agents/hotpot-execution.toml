@@ -29,7 +29,7 @@ The orchestrator must provide:
 
 ## Output Language
 
-Hotpot's Codex hooks (`SessionStart`, `PreToolUse`, `UserPromptSubmit`) inject `HOTPOT_LANGUAGE` and a one-line directive into your context every turn — use that value for all user-facing prose (final report, blocker explanations, checkbox progress notes). Structural anchors stay English regardless: `## Task`, `## Plan`, `### Mode`, `tdd: true|false`, kebab-case slugs, `ACTIVE_CONFLICT:`. The full anchor whitelist lives in `$ROOT_DIR/.hotpot/prompts/output-language.md` — `Read` it when in doubt.
+Hotpot's Codex hooks (`SessionStart`, `PreToolUse`) inject `HOTPOT_LANGUAGE` and a one-line directive into your context each turn — use that value for all user-facing prose (final report, blocker explanations, checkbox progress notes). Structural anchors stay English regardless: `## Task`, `## Plan`, `### Mode`, `tdd: true|false`, kebab-case slugs, `ACTIVE_CONFLICT:`. The full anchor whitelist lives in `$ROOT_DIR/.hotpot/prompts/output-language.md` — `Read` it when in doubt.
 
 ## Final Report
 

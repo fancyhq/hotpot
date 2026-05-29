@@ -157,6 +157,8 @@ Common event families:
 
 Hotpot implication: review-memory helpers are best implemented as OpenCode plugins because plugins can expose tools, inject environment variables, and observe command/tool lifecycles.
 
+Hotpot-specific context note: OpenCode currently has no Hotpot model-context hook equivalent to Claude/Codex `PreToolUse` or Pi `pi.on("context", ...)`. The Hotpot OpenCode plugins call `hotpot hook bootstrap --format json --root-dir <ctx.directory>` and assign the resulting full context only to `shell.env`, so Bash/tool subprocesses receive the full env contract (`HOTPOT_*_PROMPT`, issue-candidate paths, VuePress fields, etc.). OpenCode does not inject bulk bootstrap data into model context: that JSON is not expanded into `systemMessage`, `additionalContext`, or any other model-visible context; language is reinforced by the orchestrator and subagent prompt text instead.
+
 ## Tools
 
 OpenCode has built-in tools plus MCP and custom tools.

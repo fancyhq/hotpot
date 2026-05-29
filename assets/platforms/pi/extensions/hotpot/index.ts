@@ -352,23 +352,34 @@ export default function hotpotExtension(pi: ExtensionAPI) {
     const hotpot = await ensureContext(ctx.cwd);
     const messages: { role: "system"; content: string }[] = [
       {
+        // Lightweight model-visible context: only ROOT_DIR and HOTPOT_LANGUAGE.
+        // Other env fields (HOTPOT_NEW_PROMPT, etc.) are NOT listed here —
+        // the model should resolve prompt files via $ROOT_DIR/.hotpot/prompts/<name>.md.
+        // The full env contract is still injected into bash subprocesses via
+        // injectHotpotEnv() in the tool_call handler.
+        //
+        // 轻量模型可见上下文：只列 ROOT_DIR 与 HOTPOT_LANGUAGE。
+        // 不列出其它 prompt 路径字段；模型应通过
+        // $ROOT_DIR/.hotpot/prompts/<name>.md 定位 prompt 文件。
+        // 完整 env 契约仍通过 injectHotpotEnv() 注入 bash 子进程。
         role: "system",
         content: [
           "Hotpot context was resolved from the Pi extension cwd.",
           "Use these values for Hotpot-related Bash commands:",
-          ...Object.entries(hotpot).map(([key, value]) => `- ${key}: ${value}`),
+          `- ROOT_DIR: ${hotpot.ROOT_DIR}`,
+          `- HOTPOT_LANGUAGE: ${hotpot.HOTPOT_LANGUAGE}`,
         ].join("\n"),
       },
       // Per-turn output-language reassertion. Pi's `context` event fires
       // before every provider request, so this is the natural place to
       // restate the language directive — equivalent to Claude/Codex
-      // `UserPromptSubmit` hooks. Keep it short to avoid context bloat;
+      // `PreToolUse` lightweight context. Keep it short to avoid context bloat;
       // the full anchor whitelist lives in
       // `$ROOT_DIR/.hotpot/prompts/output-language.md`.
       //
       // 每轮重申输出语言。Pi 的 `context` 事件在每次 provider 请求前
       // 触发，是天然的"每轮注入"切点——等价于 Claude/Codex 的
-      // `UserPromptSubmit` 钩子。保持简短，完整锚点清单在
+      // `PreToolUse` 轻量上下文。保持简短，完整锚点清单在
       // `$ROOT_DIR/.hotpot/prompts/output-language.md`。
       {
         role: "system",
